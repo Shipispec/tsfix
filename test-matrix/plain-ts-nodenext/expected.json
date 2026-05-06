@@ -1,0 +1,8 @@
+{
+	"description": "module: nodenext, moduleResolution: nodenext (ES2022 target). Common for new pure-Node TS projects. Tests that the in-process tsc respects nodenext resolution semantics.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectFileContains": ["console.log"]
+}

@@ -1,0 +1,8 @@
+{
+	"description": "Three TS2552 typos (consol/JSon/Promse). LSP fixer must auto-correct all of them. Note: each typo produces both TS2304 + TS2552 cascades, so total error count is higher than typo count. Fixer applies one rename per unique typo site.",
+	"errorsBefore": 5,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 3,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2552"]
+}

@@ -1,0 +1,8 @@
+{
+	"description": "Next.js 16-style App Router setup. tsconfig has paths alias + jsx: preserve. Tests: (a) the fixer finds and fixes the TS2552 typo despite baseline JSX-namespace noise (TS2503 + 2× TS7026) that comes from jsx: preserve without the Next runtime. (b) The fixer does NOT touch the JSX-namespace errors — those need jsxImportSource: react or the real Next compiler plugin. Pinning this expectation prevents future fixer changes from accidentally rewriting JSX nodes.",
+	"errorsBefore": 4,
+	"errorsAfterMax": 3,
+	"lspFixesAppliedMin": 1,
+	"mustPass": false,
+	"expectFileContains": ["console.log"]
+}

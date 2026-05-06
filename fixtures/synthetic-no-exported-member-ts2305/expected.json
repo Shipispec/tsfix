@@ -1,0 +1,8 @@
+{
+	"description": "Importing 'ueState' from 'react' (TS2305: no exported member). LSP fixer should suggest 'useState' as the closest match and apply it.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2305"]
+}

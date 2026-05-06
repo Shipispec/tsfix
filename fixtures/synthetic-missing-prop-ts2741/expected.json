@@ -1,0 +1,8 @@
+{
+	"description": "Object literal missing a required property (TS2741). Compiler can stub the missing field, but it picks a placeholder type — wrong call for our pipeline. Must escape Layer 0 and reach the mend agent.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 1,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

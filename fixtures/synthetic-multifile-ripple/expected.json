@@ -1,0 +1,8 @@
+{
+	"description": "Multi-file three-step ripple. types.ts exports class Greeter. consumer.ts has TS2724 (import 'Greater'), then a hidden TS2552 (type annotation 'Greater' → 'Greeter') that surfaces in iter 2, then a hidden TS2551 ('greetNam' → 'greetName') that surfaces in iter 3 once `g` is typed as Greeter. Tests that the iteration loop's signature-set progress check follows real cascades and that the default 5-iteration cap accommodates 3-step convergence.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 3,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2724", "TS2552", "TS2551"]
+}

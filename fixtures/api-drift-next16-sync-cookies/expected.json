@@ -1,0 +1,8 @@
+{
+	"description": "Next.js 16 made cookies() / headers() return Promise (sync fallback removed). LLMs trained on ≤15 docs write `cookies().get(...)` directly — TS2339 'Property get does not exist on Promise<ReadonlyRequestCookies>'. Two TS2339 errors. LSP fixer cannot insert an `await` — that requires making the calling function async, structural change. Mend / prompt-rule territory.",
+	"errorsBefore": 2,
+	"errorsAfterMax": 2,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

@@ -1,0 +1,8 @@
+{
+	"description": "React + Vite TSX setup. jsx: react-jsx, isolatedModules: true. Tests: (a) the fixer handles .tsx files, (b) JSX context doesn't break TS2552 fixes, (c) two typos in one file get both fixed.",
+	"errorsBefore": 2,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 2,
+	"mustPass": true,
+	"expectFileContains": ["console.log", "window.location"]
+}

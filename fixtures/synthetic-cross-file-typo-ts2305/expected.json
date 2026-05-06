@@ -1,0 +1,8 @@
+{
+	"description": "Cross-file: math.ts exports addTwo. calc.ts uses an export-from with the wrong name ('addOne'). DOCUMENTED LIMITATION (probed 2026-05-03): for `export { X } from './path'` the TS LanguageService returns zero code fixes for TS2305 — even though it does for the import-from form. The fix path lives in the mend layer until/unless we add a custom export-from rewriter. consumer.ts imports the correct name directly so the rename has no ripple.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 1,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

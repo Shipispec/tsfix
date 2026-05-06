@@ -1,0 +1,8 @@
+{
+	"description": "DOCUMENTED LIMITATION: TypeScript project references (root tsconfig with `files: []` + `references`). The in-process tsc validator parses the root tsconfig, gets parsed.fileNames = [] (root has no own files; everything is in referenced sub-projects), and reports zero errors even though leaf packages have real bugs. The fixer can't help because it never sees the leaves. Workaround for users today: point --workspace at a leaf package (e.g. tsfix --workspace ./packages/b). A real fix needs the tool to mimic `tsc --build` semantics — separate roadmap item. This fixture pins the limitation so we notice if it accidentally starts working or breaks differently.",
+	"errorsBefore": 0,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMax": 0,
+	"mustPass": true,
+	"isLimitation": true
+}

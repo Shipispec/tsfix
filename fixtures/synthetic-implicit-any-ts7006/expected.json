@@ -1,0 +1,8 @@
+{
+	"description": "Implicit-any function params (TS7006). LSP fixer must NOT touch these — its inferAny fix could pick the wrong type. Errors must persist for the mend-agent / prompt rules to handle.",
+	"errorsBefore": 4,
+	"errorsAfterMax": 4,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

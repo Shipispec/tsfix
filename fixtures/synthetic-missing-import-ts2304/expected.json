@@ -1,0 +1,8 @@
+{
+	"description": "consumer.ts uses makeGreeting from ./helpers without importing it (TS2304). LSP fixer should auto-add the import.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2304"]
+}

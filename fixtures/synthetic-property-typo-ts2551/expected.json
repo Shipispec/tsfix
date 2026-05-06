@@ -1,0 +1,8 @@
+{
+	"description": "Property typos (.lenght, .toUperCase). TS2551 'Did you mean Y'. Added to SAFE_FIXABLE_CODES on 2026-05-03 — single 'spelling' fix per error, already-trusted fix name. LSP fixer must rename both.",
+	"errorsBefore": 2,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 2,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2551"]
+}

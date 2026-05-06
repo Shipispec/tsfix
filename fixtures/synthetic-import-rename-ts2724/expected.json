@@ -1,0 +1,8 @@
+{
+	"description": "consumer.ts imports {formatDate, paseDate} from ./util but ./util exports {formatDate, parseDate}. The 'paseDate' import triggers TS2724 with did-you-mean='parseDate'. LSP fixer should rename it.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2724"]
+}

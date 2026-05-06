@@ -1,0 +1,8 @@
+{
+	"description": "React 19 hook surface used against installed react@18.3.1: useActionState (renamed from react-dom's useFormState in v19) does not exist on react@18. Triggers TS2305 'no exported member useActionState'. The LSP fixer's TS2305 handler should NOT auto-rename to useState (semantically wrong) — the fix names returned must not be in SAFE_FIX_NAMES, OR the candidate must be ambiguous. This fixture pins down that boundary: errorsAfter must equal errorsBefore even though TS2305 is in SAFE_FIXABLE_CODES.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 1,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

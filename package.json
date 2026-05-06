@@ -1,0 +1,70 @@
+{
+	"name": "@shipispec/tsfix",
+	"version": "0.2.0",
+	"description": "Reusable TypeScript error-recovery agent. Validates LLM-generated TS code, auto-fixes deterministic error classes via the TS Language Service, and exposes hooks for LLM-driven repair.",
+	"keywords": [
+		"typescript",
+		"tsc",
+		"error-recovery",
+		"language-service",
+		"code-fix",
+		"auto-fix",
+		"llm",
+		"ai-codegen",
+		"validator",
+		"linter"
+	],
+	"license": "MIT",
+	"author": "owgreen-dev <ogreenowow@gmail.com>",
+	"homepage": "https://github.com/owgreen-dev/tsfix#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/owgreen-dev/tsfix.git"
+	},
+	"bugs": {
+		"url": "https://github.com/owgreen-dev/tsfix/issues"
+	},
+	"engines": {
+		"node": ">=20.9.0"
+	},
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"bin": {
+		"tsfix": "./dist/cli.js"
+	},
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE",
+		"CHANGELOG.md"
+	],
+	"scripts": {
+		"build": "node scripts/build.mjs",
+		"matrix": "node scripts/run-matrix.mjs",
+		"prepublishOnly": "npm run build",
+		"setup-fixtures": "node -e \"require('fs').existsSync('fixtures/_shared/node_modules')||require('child_process').execSync('npm install --prefix fixtures/_shared',{stdio:'inherit'})\"",
+		"prebenchmark": "npm run setup-fixtures",
+		"pretest": "npm run setup-fixtures",
+		"benchmark": "tsx benchmark/run-benchmark.ts",
+		"run-stack": "tsx cli/run-stack.ts",
+		"test": "vitest run",
+		"check-types": "tsc --noEmit"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"esbuild": "^0.28.0",
+		"tsx": "^4.20.6",
+		"typescript": "^5.9.3",
+		"vitest": "^3.2.4"
+	},
+	"peerDependencies": {
+		"typescript": ">=5.0.0"
+	}
+}

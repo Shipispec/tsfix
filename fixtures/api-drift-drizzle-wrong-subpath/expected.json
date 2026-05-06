@@ -1,0 +1,8 @@
+{
+	"description": "LLM imports pgTable/integer/text from 'drizzle-orm' but they're exported from 'drizzle-orm/pg-core'. Three TS2305 errors. eq() is correctly at the root. Probe-result: TBD on first run — if the LSP auto-import code-action recognizes the symbols are available in /pg-core (the stub declares them), it might suggest the right import. Update mustPass / errorsAfterMax once we see the actual behavior.",
+	"errorsBefore": 3,
+	"errorsAfterMax": 3,
+	"lspFixesAppliedMax": 3,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

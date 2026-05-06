@@ -1,0 +1,8 @@
+{
+	"description": "Zod 4 surface used against installed zod@3.25.76: z.email() and z.uuid() are top-level in v4 but on v3 you must call z.string().email(). Triggers TS2339 'Property does not exist on type typeof z'. LSP fixer cannot resolve this — TS2339 is not in SAFE_FIXABLE_CODES (and no did-you-mean exists). Documents that the mend layer (or a packageGotchas-injected prompt rule) must handle Zod major-version drift.",
+	"errorsBefore": 2,
+	"errorsAfterMax": 2,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

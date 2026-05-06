@@ -1,0 +1,7 @@
+{
+	"description": "Hand-curated workspace with NO errors. Regression check: stack must not introduce errors on clean code.",
+	"errorsBefore": 0,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMax": 0,
+	"mustPass": true
+}

@@ -1,0 +1,8 @@
+{
+	"description": "Legacy Node setup: module: commonjs, target: ES2015, moduleResolution: node10. Tests that the fixer works on older TS configs (still common in long-lived codebases).",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectFileContains": ["console.log"]
+}

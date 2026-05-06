@@ -1,0 +1,8 @@
+{
+	"description": "Baseline TS project (esnext + bundler resolution). Canonical TS2552 typo. The simplest possible setup; if this fails, nothing else has a chance.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectFileContains": ["console.log"]
+}
