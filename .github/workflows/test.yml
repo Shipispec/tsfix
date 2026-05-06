@@ -16,7 +16,10 @@ jobs:
           node-version: '20'
           cache: npm
 
-      - run: npm ci
+      # `npm install` not `npm ci`: the lockfile was generated on macOS, so
+      # `npm ci` on Linux skips `@rollup/rollup-linux-x64-gnu` (the platform-
+       # specific optional dep vitest's rollup requires) — npm bug 4828.
+      - run: npm install
 
       - name: Type check
         run: npm run check-types
