@@ -48,7 +48,7 @@
 	"scripts": {
 		"build": "node scripts/build.mjs",
 		"matrix": "node scripts/run-matrix.mjs",
-		"prepublishOnly": "npm run build",
+		"prepack": "npm run build",
 		"setup-fixtures": "node -e \"require('fs').existsSync('fixtures/_shared/node_modules')||require('child_process').execSync('npm install --prefix fixtures/_shared',{stdio:'inherit'})\"",
 		"prebenchmark": "npm run setup-fixtures",
 		"pretest": "npm run setup-fixtures",
