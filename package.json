@@ -1,0 +1,51 @@
+{
+	"name": "@shipispec/tsmend",
+	"version": "0.0.1",
+	"description": "LLM-driven TypeScript error repair. Layer 2-4 companion to @shipispec/tsfix.",
+	"keywords": [
+		"typescript",
+		"tsc",
+		"error-recovery",
+		"llm",
+		"ai-codegen",
+		"code-repair",
+		"ai-sdk",
+		"anthropic",
+		"language-service"
+	],
+	"license": "MIT",
+	"author": "owgreen-dev <ogreenowow@gmail.com>",
+	"homepage": "https://github.com/owgreen-dev/tsmend#readme",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/owgreen-dev/tsmend.git"
+	},
+	"bugs": {
+		"url": "https://github.com/owgreen-dev/tsmend/issues"
+	},
+	"engines": {
+		"node": ">=20.9.0"
+	},
+	"type": "module",
+	"private": true,
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"scripts": {
+		"check-types": "tsc --noEmit",
+		"test": "vitest run --passWithNoTests"
+	},
+	"dependencies": {
+		"@shipispec/tsfix": "^0.3.0",
+		"@ai-sdk/anthropic": "^3.0.44",
+		"ai": "^6.0.86"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"tsx": "^4.20.6",
+		"typescript": "^5.9.3",
+		"vitest": "^3.2.4"
+	},
+	"peerDependencies": {
+		"typescript": ">=5.0.0"
+	}
+}

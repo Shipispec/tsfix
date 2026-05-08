@@ -1,0 +1,27 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # Same workaround as @shipispec/tsfix: lockfile generated on macOS skips
+      # platform-specific optional deps on Linux. npm bug 4828.
+      - run: rm -f package-lock.json && npm install
+
+      - name: Type check
+        run: npm run check-types
+
+      - name: Unit tests (vitest)
+        run: npm test
