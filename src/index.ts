@@ -2,7 +2,7 @@
  * @shipispec/tsmend — LLM-driven TypeScript error repair.
  *
  * Layer 2–4 companion to @shipispec/tsfix. Pre-release; the public surface
- * grows as Layer 2 lands (planned: `mendSingleFile`, `runMendLoop`).
+ * grows as Layer 2 lands.
  *
  * The package re-exports the contract types from `@shipispec/tsfix` so
  * downstream consumers can import them from either package interchangeably.
@@ -20,3 +20,6 @@ export type {
 	ApplyResult,
 	SingleBlockResult,
 } from "./applyEditBlock.js";
+
+export { mendSingleFile } from "./mendAgent.js";
+export type { MendSingleFileOptions, MendSingleFileResult, LLMCall } from "./mendAgent.js";
