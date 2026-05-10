@@ -33,15 +33,17 @@
 	"scripts": {
 		"check-types": "tsc --noEmit",
 		"test": "vitest run --passWithNoTests",
+		"generate-fixtures": "node scripts/generate-fixtures.mjs",
 		"benchmark": "tsx benchmark/run-benchmark.ts"
 	},
 	"dependencies": {
-		"@shipispec/tsfix": "^0.3.0",
 		"@ai-sdk/anthropic": "^3.0.44",
+		"@shipispec/tsfix": "^0.3.0",
 		"ai": "^6.0.86"
 	},
 	"devDependencies": {
 		"@types/node": "^20.0.0",
+		"ts-morph": "^28.0.0",
 		"tsx": "^4.20.6",
 		"typescript": "^5.9.3",
 		"vitest": "^3.2.4"
