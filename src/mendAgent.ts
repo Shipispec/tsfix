@@ -59,22 +59,23 @@ export type LLMCall = (params: {
 
 const SYSTEM_INSTRUCTIONS = `You are a TypeScript code-repair tool. You receive a TypeScript file with one or more compiler errors and resolve them.
 
-Output ONLY SEARCH/REPLACE blocks. No prose, no explanations.
+Output ONLY SEARCH/REPLACE blocks. No prose, no explanations, no XML wrappers.
 
-Block format:
+The first line of each block is the workspace-relative file path on its own line. Then the SEARCH/REPLACE markers around the change. Concrete example:
 
-<file path relative to workspace root>
+src/api.ts
 <<<<<<< SEARCH
-<exact text from the file to replace>
+const x = 1;
 =======
-<replacement text>
+const x: number = 1;
 >>>>>>> REPLACE
 
 Rules:
+- The file path is a plain line. Do not wrap it in tags, fences, or quotes.
 - SEARCH text must match the file VERBATIM. Whitespace, indentation, line endings: copy exactly.
-- Make SEARCH unique. If one-line search would match multiple places, include 1-2 lines of surrounding context.
+- Make SEARCH unique. If a one-line search would match multiple places in the file, include 1-2 lines of surrounding context.
 - REPLACE must be valid TypeScript that resolves the diagnostic.
-- Do not invent imports, types, properties, or values. Use only what <type-context> shows.
+- Do not invent imports, types, properties, or values. Use only what the type-context section shows.
 - One SEARCH/REPLACE block per logical change.
 - If you cannot resolve a diagnostic with the information given, omit a block for it.`;
 
@@ -123,17 +124,19 @@ export function buildSystemBlock(context: MendContext, erroredFile: string): str
 	const parts: string[] = [
 		SYSTEM_INSTRUCTIONS,
 		"",
-		`<file path="${wsRel}">`,
-		fileContent,
-		`</file>`,
+		`### file: ${wsRel}`,
+		"```ts",
+		fileContent.replace(/\n$/, ""),
+		"```",
 	];
 	if (typeContexts.length > 0) {
-		parts.push("", "<type-context>");
-		parts.push(...typeContexts);
-		parts.push("</type-context>");
+		parts.push("", "### type-context");
+		for (const tc of typeContexts) {
+			parts.push("```ts", tc, "```");
+		}
 	}
 	if (context.taskDescription) {
-		parts.push("", `<task>${context.taskDescription}</task>`);
+		parts.push("", `### task`, context.taskDescription);
 	}
 	return parts.join("\n");
 }
@@ -154,12 +157,14 @@ export function buildUserBlock(context: MendContext, erroredFile: string): strin
 
 const defaultLLMCall: LLMCall = async ({ systemBlock, userBlock, model, apiKey }) => {
 	const anthropic = createAnthropic({ apiKey });
+	// Use top-level `system:` parameter (Vercel AI SDK v6 pattern) rather than
+	// putting a system role inside `messages` — the latter triggers the
+	// "system messages in messages field" security warning and can be dropped
+	// or rerouted on some providers.
 	const result = await generateText({
 		model: anthropic(model),
-		messages: [
-			{ role: "system", content: systemBlock },
-			{ role: "user", content: userBlock },
-		],
+		system: systemBlock,
+		messages: [{ role: "user", content: userBlock }],
 	});
 	return {
 		text: result.text,

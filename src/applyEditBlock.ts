@@ -51,6 +51,21 @@ const SEPARATOR = "=======";
 const REPLACE_MARKER = ">>>>>>> REPLACE";
 
 /**
+ * Extract a clean file path from the line preceding a SEARCH marker.
+ * Handles three observed shapes from real LLM output:
+ *   - bare path: `src/api.ts`
+ *   - quoted path: `"src/api.ts"` or `` `src/api.ts` ``
+ *   - XML-style attribute: `<file path="src/api.ts">` (claude likes this when
+ *     the system prompt itself uses XML markers)
+ */
+function extractFilePath(line: string): string {
+	const trimmed = line.trim();
+	const attrMatch = trimmed.match(/<\s*file\s+path\s*=\s*["']([^"']+)["']\s*\/?>/i);
+	if (attrMatch) return attrMatch[1];
+	return trimmed.replace(/^[`'"]+|[`'"]+$/g, "");
+}
+
+/**
  * Extract every well-formed SEARCH/REPLACE block from raw LLM output.
  * Malformed / truncated blocks at the tail are skipped silently.
  */
@@ -67,18 +82,22 @@ export function parseEditBlocks(llmOutput: string): EditBlock[] {
 			break;
 		}
 
-		// File path: walk back from SEARCH marker, skipping fence lines (```...)
-		// and blank lines, until we hit the first content line.
+		// File path: walk back from SEARCH marker, skipping fence lines, blank
+		// lines, and closing XML tags (left over from a prior block's wrapper).
 		let fileIdx = i - 1;
 		while (fileIdx >= 0) {
 			const trimmed = lines[fileIdx].trim();
-			if (trimmed === "" || trimmed.startsWith("```")) {
+			if (
+				trimmed === "" ||
+				trimmed.startsWith("```") ||
+				trimmed.startsWith("</")
+			) {
 				fileIdx--;
 				continue;
 			}
 			break;
 		}
-		const filePath = fileIdx >= 0 ? lines[fileIdx].trim() : "";
+		const filePath = fileIdx >= 0 ? extractFilePath(lines[fileIdx]) : "";
 
 		i++; // past SEARCH marker
 		const searchLines: string[] = [];

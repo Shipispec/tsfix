@@ -32,7 +32,8 @@
 	"types": "./src/index.ts",
 	"scripts": {
 		"check-types": "tsc --noEmit",
-		"test": "vitest run --passWithNoTests"
+		"test": "vitest run --passWithNoTests",
+		"benchmark": "tsx benchmark/run-benchmark.ts"
 	},
 	"dependencies": {
 		"@shipispec/tsfix": "^0.3.0",

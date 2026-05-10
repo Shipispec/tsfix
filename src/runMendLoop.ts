@@ -51,6 +51,8 @@ export interface MendLoopIteration {
 	inputTokens: number;
 	outputTokens: number;
 	latencyMs: number;
+	/** Raw LLM response for this iteration — useful for debugging failed patches. */
+	rawResponse: string;
 }
 
 export type StopReason =
@@ -161,6 +163,7 @@ export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoop
 			inputTokens: mend.inputTokens,
 			outputTokens: mend.outputTokens,
 			latencyMs: mend.latencyMs,
+			rawResponse: mend.rawResponse,
 		});
 
 		if (dryRun) {

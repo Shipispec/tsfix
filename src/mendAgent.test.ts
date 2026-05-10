@@ -74,8 +74,7 @@ describe("buildSystemBlock", () => {
 		const context = buildContext(workspace, ["broken.ts"]);
 		const out = buildSystemBlock(context, "broken.ts");
 		expect(out).toContain("'hello'");
-		expect(out).toContain('<file path="broken.ts">');
-		expect(out).toContain("</file>");
+		expect(out).toContain("### file: broken.ts");
 	});
 
 	it("includes type-context block for TS2339", () => {
@@ -90,9 +89,7 @@ describe("buildSystemBlock", () => {
 		);
 		const context = buildContext(workspace, ["broken.ts"]);
 		const out = buildSystemBlock(context, "broken.ts");
-		// `</type-context>` is unambiguous — instructions mention `<type-context>`
-		// as a tag name but never the closing tag.
-		expect(out).toContain("</type-context>");
+		expect(out).toContain("### type-context");
 		expect(out).toContain("// type: User");
 		expect(out).toContain("interface User");
 	});
@@ -104,7 +101,7 @@ describe("buildSystemBlock", () => {
 		);
 		const context = buildContext(workspace, ["broken.ts"]);
 		const out = buildSystemBlock(context, "broken.ts");
-		expect(out).not.toContain("</type-context>");
+		expect(out).not.toContain("### type-context");
 	});
 
 	it("appends taskDescription when provided", () => {
@@ -116,7 +113,8 @@ describe("buildSystemBlock", () => {
 			taskDescription: "wire up auth",
 		};
 		const out = buildSystemBlock(context, "broken.ts");
-		expect(out).toContain("<task>wire up auth</task>");
+		expect(out).toContain("### task");
+		expect(out).toContain("wire up auth");
 	});
 });
 

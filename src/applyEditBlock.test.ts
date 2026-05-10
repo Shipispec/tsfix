@@ -63,6 +63,46 @@ describe("parseEditBlocks", () => {
 		const out = ["src/a.ts", "<<<<<<< SEARCH", "foo", "======="].join("\n");
 		expect(parseEditBlocks(out)).toEqual([]);
 	});
+
+	it("extracts the path from a <file path=\"…\"> wrapper (Claude regression)", () => {
+		// Claude often mirrors XML markers from the system prompt back into its
+		// output. Path attribute should still resolve cleanly.
+		const out = [
+			'<file path="src/api.ts">',
+			"<<<<<<< SEARCH",
+			"foo",
+			"=======",
+			"bar",
+			">>>>>>> REPLACE",
+			"</file>",
+		].join("\n");
+		const blocks = parseEditBlocks(out);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0].file).toBe("src/api.ts");
+	});
+
+	it("skips a closing </…> tag when walking back to the path of a subsequent block", () => {
+		const out = [
+			'<file path="src/a.ts">',
+			"<<<<<<< SEARCH",
+			"foo",
+			"=======",
+			"bar",
+			">>>>>>> REPLACE",
+			"</file>",
+			'<file path="src/b.ts">',
+			"<<<<<<< SEARCH",
+			"baz",
+			"=======",
+			"qux",
+			">>>>>>> REPLACE",
+			"</file>",
+		].join("\n");
+		const blocks = parseEditBlocks(out);
+		expect(blocks).toHaveLength(2);
+		expect(blocks[0].file).toBe("src/a.ts");
+		expect(blocks[1].file).toBe("src/b.ts");
+	});
 });
 
 describe("applySingleBlock fuzzy match tiers", () => {
