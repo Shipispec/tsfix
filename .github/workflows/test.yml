@@ -9,9 +9,9 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           cache: npm
@@ -25,3 +25,12 @@ jobs:
 
       - name: Unit tests (vitest)
         run: npm test
+
+      # Live LLM benchmark — exits 0 with a "skipped" message when
+      # ANTHROPIC_API_KEY is unset, so it doesn't break CI before the secret
+      # is configured. Once configured, runs the 3 Layer-2 fixtures against
+      # claude-haiku-4-5 (~0.002 USD per run).
+      - name: Benchmark (3 Layer-2 fixtures, real LLM)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: npm run benchmark
