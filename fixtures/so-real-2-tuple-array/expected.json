@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: `tags: [Tag]` is a 1-tuple, not Tag[]. Real SO Q&A from 2016.",
+  "expectedErrorCode": "TS2322",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

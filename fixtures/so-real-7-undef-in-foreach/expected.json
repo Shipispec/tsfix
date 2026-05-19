@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Narrowing on outer if doesn't carry into forEach closure.",
+  "expectedErrorCode": "TS18048",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Index signature requires bracket access in stricter TS versions; in current TS this is TS7053 / TS2339 depending on settings.",
+  "expectedErrorCode": "TS4111",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

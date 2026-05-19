@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Assigning class Foo instead of `new Foo()` to a typed instance property.",
+  "expectedErrorCode": "TS2741",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

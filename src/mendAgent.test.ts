@@ -117,6 +117,52 @@ describe("buildSystemBlock", () => {
 		expect(out).toContain("### task");
 		expect(out).toContain("wire up auth");
 	});
+
+	it("includes the library-migrations block when libraryMigrations is non-empty", () => {
+		fs.writeFileSync(path.join(workspace, "broken.ts"), "export const x = 1;\n");
+		const context: MendContext = {
+			workspaceRoot: workspace,
+			diagnostics: [],
+			erroredFiles: ["broken.ts"],
+			libraryMigrations: [
+				{ name: "vite-plugin-svgr@^4.0.0", hint: "use ?react query suffix" },
+			],
+		};
+		const out = buildSystemBlock(context, "broken.ts");
+		expect(out).toContain("### library-migrations");
+		expect(out).toContain("[vite-plugin-svgr@^4.0.0]");
+		expect(out).toContain("?react");
+	});
+
+	it("uses libraryMigrations as the task headline (overrides taskDescription)", () => {
+		fs.writeFileSync(path.join(workspace, "broken.ts"), "export const x = 1;\n");
+		const context: MendContext = {
+			workspaceRoot: workspace,
+			diagnostics: [],
+			erroredFiles: ["broken.ts"],
+			taskDescription: "should be overridden",
+			libraryMigrations: [{ name: "next@15.2.4", hint: "params is Promise" }],
+		};
+		const out = buildSystemBlock(context, "broken.ts");
+		expect(out).toContain("### task");
+		expect(out).toContain("Library migration: next@15.2.4");
+		expect(out).not.toContain("should be overridden");
+	});
+
+	it("keeps taskDescription as headline when libraryMigrations is empty", () => {
+		fs.writeFileSync(path.join(workspace, "broken.ts"), "export const x = 1;\n");
+		const context: MendContext = {
+			workspaceRoot: workspace,
+			diagnostics: [],
+			erroredFiles: ["broken.ts"],
+			taskDescription: "my custom task",
+			libraryMigrations: [],
+		};
+		const out = buildSystemBlock(context, "broken.ts");
+		expect(out).toContain("### task");
+		expect(out).toContain("my custom task");
+		expect(out).not.toContain("### library-migrations");
+	});
 });
 
 describe("buildUserBlock", () => {

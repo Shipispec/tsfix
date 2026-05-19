@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: JSON.parse(buffer) \u2014 must call .toString() first.",
+  "expectedErrorCode": "TS2345",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

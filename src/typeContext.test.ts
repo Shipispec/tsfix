@@ -119,4 +119,70 @@ describe("getTypeContext", () => {
 		// resolve to, so typeDeclaration should be undefined.
 		expect(ctx.typeDeclaration).toBeUndefined();
 	});
+
+	// Regression: prior versions threw `Cannot read properties of undefined
+	// (reading 'kind'/'flags')` from inside TypeScript's `isDeclarationName...`
+	// / `getTypeOfNode` when called on AST nodes whose symbol can't be
+	// resolved — common in multi-file rename cascades where the source has
+	// renamed a type (`User` → `Account`) but importers still reference the
+	// old name. Now caught and treated as "no resolvable type".
+	//
+	// Sourced from spectoship2's case-m1-rename-cascade bench fixture, where
+	// this exact shape errored 3/3 runs before the guard.
+	it("does not throw on multi-file rename-cascade (TS2305: unresolvable named import)", () => {
+		fs.writeFileSync(
+			path.join(workspace, "types.ts"),
+			"export interface Account {\n  id: string;\n  name: string;\n}\n",
+		);
+		// 4 importers all referencing the OLD name `User`.
+		fs.writeFileSync(
+			path.join(workspace, "userService.ts"),
+			'import { User } from "./types.js";\n' +
+				"export async function getUser(id: string): Promise<User> {\n" +
+				"  void id;\n" +
+				"  return null as unknown as User;\n" +
+				"}\n",
+		);
+		fs.writeFileSync(
+			path.join(workspace, "useUser.ts"),
+			'import type { User } from "./types.js";\n' +
+				"export function pickUser(u: User): string {\n" +
+				"  return u.name;\n" +
+				"}\n",
+		);
+		fs.writeFileSync(
+			path.join(workspace, "profile.ts"),
+			'import type { User } from "./types.js";\n' +
+				"export function describe(u: User | null): string {\n" +
+				'  return u ? u.name : "anon";\n' +
+				"}\n",
+		);
+		fs.writeFileSync(
+			path.join(workspace, "card.ts"),
+			'import { User } from "./types.js";\n' +
+				"export type CardUser = User;\n",
+		);
+
+		const tsc = runInProcessTsc({
+			workspaceRoot: workspace,
+			generatedFiles: ["userService.ts", "useUser.ts", "profile.ts", "card.ts"],
+			logger: noopLogger,
+		});
+		const ts2305s = tsc.diagnostics.filter(
+			(d: Diagnostic) => d.code === "TS2305" && d.category === "error",
+		);
+		expect(ts2305s.length, "expected ≥1 TS2305 from the rename cascade").toBeGreaterThan(0);
+
+		// All four importers' diagnostics must be processable without throwing.
+		// The pre-guard behavior threw inside TypeScript on the first one and
+		// killed the whole prep loop.
+		for (const diag of ts2305s) {
+			expect(() =>
+				getTypeContext({ workspaceRoot: workspace, diagnostic: diag }),
+			).not.toThrow();
+			const ctx = getTypeContext({ workspaceRoot: workspace, diagnostic: diag });
+			expect(ctx.errorSite).toBeDefined();
+			expect(ctx.errorSite.lines.length).toBeGreaterThan(0);
+		}
+	});
 });

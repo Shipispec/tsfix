@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Object literal missing class method required by the type.",
+  "expectedErrorCode": "TS2741",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

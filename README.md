@@ -1,13 +1,14 @@
 # tsfix
 
-> Two-layer TypeScript error recovery for LLM-generated code — fix `TS2304`, `TS2305`, `TS2551`, `TS2552`, `TS2724` deterministically with the same engine that powers VS Code's Quick Fix, and escalate the rest to a single-file LLM mend.
+> Library-aware TypeScript error recovery for LLM-generated code. Fix `TS2304`, `TS2305`, `TS2551`, `TS2552`, `TS2724` deterministically with the same engine that powers VS Code's Quick Fix. Escalate the rest to a single-file LLM mend that knows what tsc's quick-fix gets wrong about your installed libraries.
 
-`@shipispec/tsfix` is what you reach for when you've just generated a few hundred files of TypeScript with an LLM and `tsc --noEmit` is screaming at you. It runs in two layers:
+`@shipispec/tsfix` is what you reach for when you've just generated a few hundred files of TypeScript with an LLM and `tsc --noEmit` is screaming at you. It runs in layers:
 
 - **Layer 0/1** — Deterministic. Borrows the same TypeScript Language Service that powers VS Code's "Quick Fix" lightbulb and runs it as a CLI. Fixes typos, missing imports, and did-you-mean errors with no LLM, no network, no config.
-- **Layer 2** — Opt-in. A single-file LLM mend agent (Vercel AI SDK + Anthropic) that picks up what Layer 0 abstains on: TS2339 (property doesn't exist), TS7006 (implicit `any`), TS2741 (missing required prop), and other cases where the LSP can't statically derive the fix. Driven by **type-context injection** — when tsc says "Property 'foo' doesn't exist on type 'Bar'", tsfix resolves the `Bar` declaration via the TypeChecker and feeds its source to the model.
+- **Layer 2** — Opt-in. A single-file LLM mend agent (Vercel AI SDK + Anthropic) that picks up what Layer 0 abstains on: TS2339 (property doesn't exist), TS7006 (implicit `any`), TS2741 (missing required prop), and other cases where the LSP can't statically derive the fix. Driven by **type-context injection** — when tsc says "Property 'foo' doesn't exist on type 'Bar'", tsfix resolves the `Bar` declaration via the TypeChecker and feeds its source to the model. As of v0.6.0, also **library-aware**: tsfix reads your `package.json` and injects breaking-change hints for known libraries (`vite-plugin-svgr`, `next`, `ai`, `drizzle-orm`) so the model picks the runtime-correct fix instead of tsc's misleading quick-fix.
+- **Layer 4** — Escape hatch. When Layer 2 can't resolve the last few errors, opt in to `// @ts-expect-error - tsfix: ...` directives that self-destruct once the underlying issue is fixed elsewhere. tsfix never leaves the workspace worse than it found it.
 
-Layer 2 only runs if you explicitly call its API or set `ANTHROPIC_API_KEY` and use the `runMendLoop` entry point. The default `tsfix --workspace ...` CLI is still **Layer 0/1 only**.
+Layer 2 only runs if you explicitly call its API or set `ANTHROPIC_API_KEY` and pass `--llm` to the CLI. The default `tsfix --workspace ...` CLI is still **Layer 0/1 only**.
 
 ## Before / after (Layer 0)
 
@@ -97,20 +98,73 @@ Layer 2 is built for the cases the LSP can't statically resolve:
 - `TS7006` — Implicit `any`. The LLM picks the right annotation from surrounding context.
 - `TS2741` — Missing required property. The LLM sees the contextual type and supplies a real value, not a placeholder.
 
-Against a 35-fixture Layer-2 benchmark (3 hand-authored minimal + 2 realistic + 30 ts-morph-generated mutations across TS2339/TS7006/TS2741), **35/35 pass at $0.001/fixture avg, P95 latency ~1.5s on `claude-haiku-4-5`.** Caveat: the 30 generated fixtures are mutations of 3 seeds — real-world diversity will move these numbers.
+Against a 35-fixture Layer-2 benchmark (3 hand-authored minimal + 2 realistic + 30 ts-morph-generated mutations across TS2339/TS7006/TS2741), **35/35 pass at $0.001/fixture avg, P95 latency ~1.5s on `claude-haiku-4-5`.** Caveat: the 30 generated fixtures are mutations of 3 seeds — real-world diversity will move these numbers; see the realistic 34-fixture bench below.
+
+## Library-aware error recovery (v0.6.0)
+
+A typical TypeScript LLM-repair failure mode: tsc reports `TS2614: Module '"./logo.svg"' has no exported member 'ReactComponent'. Did you mean to use 'import Logo from "./logo.svg"' instead?` The model dutifully follows tsc's quick-fix and emits `import Logo from "./logo.svg"`. **tsc is now green. The dev server is now broken.** Under `vite-plugin-svgr@4`, importing an SVG as a React component requires the `?react` query suffix — `import Logo from "./logo.svg?react"`. The default export is the asset URL, not a component. Quick-fix accuracy ≠ runtime correctness.
+
+tsfix v0.6.0 reads your `package.json` on every Layer 2 invocation, matches installed deps against a built-in registry of known breaking changes, and injects library-migration hints into the system prompt's headline (not buried — headline framing matters more than buried context). With `vite-plugin-svgr@^4` installed:
+
+```
+### library-migrations
+- vite-plugin-svgr: v4 requires the `?react` query suffix to import an SVG
+  as a React component. `import Logo from "./logo.svg"` returns the asset URL.
+  `import Logo from "./logo.svg?react"` returns the component.
+
+### task
+Library migration: vite-plugin-svgr
+```
+
+Bench result on this exact case before/after: **0/3 → 3/3**.
+
+The built-in registry currently covers four libraries chosen for high LLM-repair confusion ratio:
+
+| Library | Hint |
+|---|---|
+| `vite-plugin-svgr` v4+ | `?react` query suffix to import as React component |
+| `next` v15+ | `params` / `searchParams` are now Promises (must `await`) |
+| `ai` v3 / v6 | `generateText` API shape changes |
+| `drizzle-orm` | parameterized `sql` template literals, not string concat |
+
+`detectLibraryMigrations(workspaceRoot, registry?)` is also exported as a public API; pass your own registry to extend it. `runMendLoop` auto-invokes detection when you leave `context.libraryMigrations` `undefined`; pass `[]` to opt out, or `--no-library-hints` on the CLI.
+
+### Security-aware system prompt
+
+The same release hardened the system prompt against the LLM-repair failure modes that silence tsc at the cost of runtime semantics:
+
+- **`as keyof T` to silence TS7053** — fix the function signature or guard with `if (key in obj)` instead. Casting away an index-signature error keeps the call type-passing while losing all the runtime safety.
+- **Substituting one library for another to dodge a missing import** — e.g. `bcrypt` → `crypto.subtle.digest`. The fix is to restore the missing import, not swap to a different cryptographic primitive that tsc accepts.
+- **String concatenation of user input into raw SQL** — use Drizzle's tagged template / Prisma placeholders.
+- **`dangerouslySetInnerHTML` to dodge a children-type error** — JSX `{value}` auto-escapes; if you need HTML, sanitize via DOMPurify.
+
+### Realistic bench (34 fixtures, single + multi-file)
+
+Measured against a 34-fixture corpus drawn from real LLM-repair failures in adjacent projects (24 single-file + 10 multi-file), n=3 per cell:
+
+| Surface | v0.5.0 | v0.6.0 | Δ |
+|---|---|---|---|
+| Single-file pass rate | 95.8% | **98.6%** | +2.8pp |
+| Multi-file pass rate | 23.3% | **40.0%** | +16.7pp |
+| Aggregate (102 cells) | 74.5% | **81.4%** | +6.9pp |
+| Hard crashes | 6 cells | **0** | -6 |
+| Cost per full bench | — | **$0.21** | — |
+| Cost per case (`claude-haiku-4-5`) | — | **<$0.005** | — |
+
+Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is the deferred answer.
 
 ## The four-layer model
 
 ```
-Layer 0 — Prevention      (prompt rules, exported-API injection — your problem)
-Layer 1 — Deterministic   (this package: LSP auto-fix, CLI default)
-Layer 2 — Single-file LLM (this package: opt-in via library API)
+Layer 0 — Prevention        (prompt rules, exported-API injection — your problem)
+Layer 1 — Deterministic     (this package: LSP auto-fix, CLI default)
+Layer 2 — Single-file LLM   (this package: opt-in via --llm or runMendLoop)
+Layer 4 — Stub-and-continue (this package: opt-in escape hatch, @ts-expect-error)
 ─────────────────────────────────────────────────────────────────
-Layer 3 — Multi-file LLM  (planned: blast-radius search/replace via findReferences)
-Layer 4 — Stub-and-continue (planned: escape hatch)
+Layer 3 — Multi-file LLM    (planned: blast-radius search/replace via findReferences)
 ```
 
-The bet: roughly half of TypeScript errors in LLM output are deterministically fixable. By catching them in Layer 1 you dodge the LLM tax (latency, cost, nondeterminism) on the easy half. Layer 2 takes the other half — but only when you explicitly invoke it.
+The bet: roughly half of TypeScript errors in LLM output are deterministically fixable. By catching them in Layer 1 you dodge the LLM tax (latency, cost, nondeterminism) on the easy half. Layer 2 takes the other half — but only when you explicitly invoke it. Layer 4 makes sure the workspace is never left worse than it started.
 
 ## Library API
 
