@@ -350,4 +350,77 @@ describe("runMendLoop", () => {
 		expect(result.stubs).toBeUndefined();
 		expect(fs.readFileSync(brokenPath, "utf-8")).not.toContain("@ts-expect-error");
 	});
+
+	it("auto-populates libraryMigrations from package.json when caller omits it", async () => {
+		// Workspace declares vite-plugin-svgr v4 — registry should fire.
+		fs.writeFileSync(
+			path.join(workspace, "package.json"),
+			JSON.stringify({
+				name: "auto-detect-test",
+				devDependencies: { "vite-plugin-svgr": "^4.0.0" },
+			}),
+		);
+		fs.writeFileSync(
+			path.join(workspace, "broken.ts"),
+			"export const x: number = 'hello';\n",
+		);
+		const context = buildContext(workspace, ["broken.ts"]);
+		// IMPORTANT: do NOT set context.libraryMigrations — that's the auto-detect path.
+
+		let capturedSystemBlock = "";
+		const fakeLLM: LLMCall = vi.fn(async (opts) => {
+			capturedSystemBlock = opts.systemBlock;
+			// Don't actually fix — return an empty response so the loop
+			// stops without further iterations.
+			return { text: "", inputTokens: 0, outputTokens: 0 };
+		});
+
+		await runMendLoop({
+			context,
+			llm: llmConfig,
+			maxIterations: 1,
+			_callLLM: fakeLLM,
+		});
+
+		expect(fakeLLM).toHaveBeenCalled();
+		expect(capturedSystemBlock).toContain("### library-migrations");
+		expect(capturedSystemBlock).toContain("vite-plugin-svgr");
+		expect(capturedSystemBlock).toContain("Library migration: vite-plugin-svgr@^4.0.0");
+	});
+
+	it("does NOT auto-populate when caller explicitly passes libraryMigrations: []", async () => {
+		// Same workspace as above (vite-plugin-svgr v4 in deps) — but caller
+		// opts out by passing [] explicitly.
+		fs.writeFileSync(
+			path.join(workspace, "package.json"),
+			JSON.stringify({
+				name: "opt-out-test",
+				devDependencies: { "vite-plugin-svgr": "^4.0.0" },
+			}),
+		);
+		fs.writeFileSync(
+			path.join(workspace, "broken.ts"),
+			"export const x: number = 'hello';\n",
+		);
+		const context: MendContext = {
+			...buildContext(workspace, ["broken.ts"]),
+			libraryMigrations: [], // explicit opt-out
+		};
+
+		let capturedSystemBlock = "";
+		const fakeLLM: LLMCall = vi.fn(async (opts) => {
+			capturedSystemBlock = opts.systemBlock;
+			return { text: "", inputTokens: 0, outputTokens: 0 };
+		});
+
+		await runMendLoop({
+			context,
+			llm: llmConfig,
+			maxIterations: 1,
+			_callLLM: fakeLLM,
+		});
+
+		expect(capturedSystemBlock).not.toContain("### library-migrations");
+		expect(capturedSystemBlock).not.toContain("Library migration:");
+	});
 });

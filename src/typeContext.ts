@@ -159,9 +159,27 @@ function findTypeDeclaration(
 	maxWalkUp = 4,
 ): { decl: ts.Declaration; symbolName: string } | undefined {
 	const tryResolve = (n: ts.Node) => {
-		const type = checker.getTypeAtLocation(n);
-		const symbol = type.getSymbol() ?? type.aliasSymbol;
-		const declarations = symbol?.getDeclarations();
+		// `checker.getTypeAtLocation(n)` can throw deep inside TypeScript's
+		// internals (`Cannot read properties of undefined (reading 'kind' / 'flags')`)
+		// when called on AST nodes whose symbol can't be resolved — common with
+		// multi-file rename cascades, branded types, or other patterns where
+		// references point to identifiers that don't exist yet. We treat any
+		// internal throw as "no resolvable type" and let the caller fall back
+		// to the error-site-only context.
+		let type: ts.Type;
+		try {
+			type = checker.getTypeAtLocation(n);
+		} catch {
+			return undefined;
+		}
+		let symbol: ts.Symbol | undefined;
+		let declarations: ts.Declaration[] | undefined;
+		try {
+			symbol = type.getSymbol() ?? type.aliasSymbol;
+			declarations = symbol?.getDeclarations();
+		} catch {
+			return undefined;
+		}
 		if (!declarations || declarations.length === 0) return undefined;
 		const nonLib = declarations.find((d) => !isLibFile(d.getSourceFile().fileName));
 		if (!nonLib) return undefined;

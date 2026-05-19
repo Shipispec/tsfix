@@ -285,6 +285,17 @@ export interface MendContext {
 	priorTaskExports?: string;
 	/** Compact type signatures of installed npm dependencies (helps prevent API hallucination). */
 	installedTypes?: string;
+	/**
+	 * Library-migration hints for installed deps whose breaking changes are
+	 * known to mislead tsc's quick-fix. When non-empty, the Layer 2 prompt
+	 * leads with these and the `taskDescription` is overridden to name them.
+	 *
+	 * Auto-populated by `runMendLoop` from `<workspaceRoot>/package.json` if
+	 * the caller doesn't set it. Pass `[]` explicitly to opt out.
+	 *
+	 * See `libraryMigrations.ts` for the built-in registry.
+	 */
+	libraryMigrations?: Array<{ name: string; hint: string }>;
 }
 
 /**
@@ -354,6 +365,15 @@ export type {
 	AppliedStub,
 	SkippedStub,
 } from "./stubAndContinue.js";
+
+// Library migration registry (auto-injected into Layer 2 prompt).
+export {
+	BUILT_IN_LIBRARY_MIGRATIONS,
+	detectLibraryMigrations,
+	formatLibraryMigrationsBlock,
+	formatLibraryMigrationsTaskDescription,
+} from "./libraryMigrations.js";
+export type { LibraryMigrationHint } from "./libraryMigrations.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Unified full-stack entrypoint (v0.6.0+).

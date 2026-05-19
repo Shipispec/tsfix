@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Array access on optional property \u2014 companyAdmins[0] is possibly undefined.",
+  "expectedErrorCode": "TS18048",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}

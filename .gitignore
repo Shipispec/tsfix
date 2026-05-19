@@ -4,3 +4,4 @@ fixtures/_shared/node_modules/
 .benchmark-cache/
 .DS_Store
 *.log
+*.tgz
