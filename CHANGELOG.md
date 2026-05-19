@@ -4,6 +4,70 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-19
+
+**Library-aware error recovery.** Layer 2 now auto-detects breaking-change hints for known libraries from your `package.json` and steers the LLM away from tsc's misleading quick-fixes when a library migration is the real cause. Plus a hardened type-context walk (no more crashes on rename cascades or branded types) and a meaningful set of security anti-patterns in the system prompt.
+
+### Added (library-migration hints)
+- **`detectLibraryMigrations(workspaceRoot, registry?)`** — reads `package.json`, matches installed deps against a built-in registry of known breaking changes, returns matching hints. Auto-invoked by `runMendLoop` when `context.libraryMigrations` is left `undefined`. Pass `[]` explicitly to opt out.
+- **`BUILT_IN_LIBRARY_MIGRATIONS` registry** — initial entries cover `vite-plugin-svgr` (v4 — `?react` query suffix), `next` (15 — `params`/`searchParams` are Promises), `ai` (v3 / v6), `drizzle-orm` (parameterized template literals).
+- **`formatLibraryMigrationsBlock(hints)`** + **`formatLibraryMigrationsTaskDescription(hints)`** — public formatters. The latter produces the `taskDescription` headline (`Library migration: <names>`) that overrides any caller-supplied description when migrations apply — empirically, models follow tsc's quick-fix when the migration is mentioned only in a buried section.
+- **CLI `--no-library-hints`** — opt-out flag. Default behavior auto-detects and injects hints. When a migration matches AND `--llm` is set, the CLI also skips Layer 0/1 (tsc's quick-fix is the misleading path for these cases).
+- **`MendContext.libraryMigrations?: Array<{ name: string; hint: string }>`** — new optional field. `undefined` = auto-detect; `[]` = opt out; populated array = override (skip detection).
+
+### Added (system-prompt security anti-patterns)
+- **Type-assertion escape-hatches** — explicitly forbids `as keyof T` for runtime-string TS7053 silencing, `x as any` / `x as unknown as T` to dodge a real mismatch, `!` non-null assertions to dodge TS18047/TS2532. The prompt directs the model to narrow at the function signature, widen with an index signature, or guard with `if (key in obj)` instead.
+- **Dependency removal/substitution** — restoring a missing import is preferred to substituting a different library (e.g. `bcrypt` → `crypto.subtle.digest` is flagged as a security regression even when tsc accepts it).
+- **SQL / NoSQL / shell injection** — forbids string concatenation of user-controlled values into raw query strings; directs the model to Drizzle's tagged template, Prisma / mysql2 placeholders, etc.
+- **React XSS** — forbids `dangerouslySetInnerHTML` as a way to dodge a children-type error; recommends auto-escaping JSX or DOMPurify.
+
+### Added (union-cleanup positive guidance)
+- When a type variant or interface property has been removed/renamed, the prompt now directs the model to do a FULL sweep in the same patch instead of partial cleanup. Specific TS2322 / TS2353 / TS2367 guidance: drop the excess property, drop now-orphaned function parameters with their use sites, replace the no-longer-valid comparison or delete it with its branch. Aimed at the "I changed one reference and left three more" failure mode that produces fresh errors on iteration 2.
+
+### Added (tests)
+- 14 unit tests in `libraryMigrations.test.ts` covering empty / matching / minMajor / maxMajor / multi-dep / malformed-package.json / custom-registry / formatter shapes / headline generation.
+- 4 tests in `mendAgent.test.ts` for `buildSystemBlock`'s library-migration integration (block present, taskDescription override, empty array, custom description preserved without migrations).
+- 2 tests in `runMendLoop.test.ts` for auto-detect (populates from package.json when omitted; opts out on explicit `[]`).
+- 1 regression test in `typeContext.test.ts` — "does not throw on multi-file rename-cascade (TS2305: unresolvable named import)" with 4 importers.
+- Total: **130/130 tests pass.**
+
+### Fixed
+- **`getTypeContext` no longer crashes on multi-file rename cascades or branded types.** `typeContext.ts:tryResolve` now wraps `checker.getTypeAtLocation(n)` and the subsequent `getSymbol()` / `aliasSymbol` / `getDeclarations()` chain in try/catch — TypeScript's internals throw `Cannot read properties of undefined (reading 'kind' / 'flags')` from `isDeclarationNameOrImportPropertyName` on these shapes; tsfix treats those as "no resolvable type" and continues. Belt-and-suspenders try/catch added in `mendAgent.ts` around the per-diagnostic context build — if one diagnostic's context fails for any reason, that diagnostic is skipped instead of killing the whole mend (one bad diag should not lose the LLM's chance to fix the other errors in the file).
+
+### Bench results
+Re-measured against the 34-fixture corpus (24 single-file + 10 multi-file) at n=3 per cell:
+
+| Surface | v0.5.0 | v0.6.0 | Δ |
+|---|---|---|---|
+| Single-file pass rate | 95.8% | **98.6%** | +2.8pp |
+| Multi-file pass rate | 23.3% | **40.0%** | +16.7pp |
+| Aggregate (102 cells) | 74.5% | **81.4%** | +6.9pp |
+| Hard crashes | 6 cells | **0** | -6 |
+| Cost per full bench | — | **$0.21** | — |
+| Cost per case (haiku-4-5) | — | **<$0.005** | — |
+
+Per-fixture flips notable enough to call out:
+
+- **`case-ts2614-vite-svgr` (0/3 → 3/3)** — vite-plugin-svgr v4's `?react` query suffix migration. Before: model followed tsc's quick-fix and emitted `import Logo from "./logo.svg"` (type-checks under the `*.svg` ambient, breaks at runtime under vite). After: with the registry hint, the model emits `import Logo from "./logo.svg?react"` and the resulting code works in both tsc and the dev server.
+- **`case-m7-index-signature-removed` (0/3 → 3/3)** — anti-pattern prompts ended the `as keyof T` escape-hatch loop.
+- **`case-m3-union-variant-removed` (2/3 → 3/3)** + **`case-m6-hook-tuple-arity` (2/3 → 3/3)** — union-cleanup guidance fixed the partial-sweep failure mode.
+- **`case-m1` + `case-m10`** — previously errored with the `typeContext` crash; now produce measurable results.
+
+Caveats: n=3 per cell is noisy at the per-case level (a single-cell flip from 2→3 may revert); aggregate column totals at 24+ cases are the trustworthy signal. Multi-file scenarios remain the gap — Layer 3 (multi-file mend) is the deferred answer.
+
+### Changed
+- **`runMendLoop`** auto-populates `context.libraryMigrations` from `rawContext.workspaceRoot`'s `package.json` when the caller leaves it `undefined`. Existing callers that omit the field get the new behavior automatically; existing callers that pass a non-empty array see no change.
+- **`buildSystemBlock`** leads the prompt body with the library-migrations section when any apply, and uses the migration headline as the `taskDescription` (overrides any caller-supplied description). The library section lives between `SYSTEM_INSTRUCTIONS` and the errored-file content — earliest position where the model still sees it before reaching the file.
+- **CLI** — when a library migration matches AND `--llm` is set, Layer 0/1 is skipped (tsc's quick-fix is the misleading path for these cases). Existing zero-LLM CLI behavior unchanged.
+
+### Engines
+- Node `>=20.9.0` (unchanged)
+- TypeScript `>=5.0.0` peer (unchanged)
+
+## [0.5.0] - 2026-05-16
+
+**Layer 4 (stub-and-continue), Day 2/3 fixture mutators, parallel + cached Layer-2 benchmark, and CLI exposure of Layer 2.** This closes the "tsfix never leaves the workspace worse than it found it" property: when Layer 2 can't resolve the last few errors, the workspace can opt-in to `@ts-expect-error` directives that self-destruct once the underlying issue is fixed elsewhere. The CLI now exposes `--llm` end-to-end (was library-API only).
+
 ### Added (Layer 4 — stub-and-continue escape hatch)
 - **`stubAndContinue(opts)`** — new public API. Inserts `// @ts-expect-error - tsfix: <codes> — <message>` immediately above each unresolved error site so `tsc --noEmit` exits 0. Closes the "tsfix never leaves the workspace worse than it found it" property. Uses `@ts-expect-error` (not `@ts-ignore`) so directives self-destruct once the underlying issue is fixed by other means.
 - **`runMendLoop` opt-in flag** — new `stubOnFailure?: boolean` option (default `false`). When the LLM loop terminates with leftover errors and the flag is set, Layer 4 runs automatically. New `"stubbed"` stop reason; new `stubs?: AppliedStub[]` result field with what was applied.
@@ -201,7 +265,9 @@ Initial public release. **Layers 0–1 only** (deterministic detection + auto-fi
 - Node `>=20.9.0` (matches VS Code Extension Host runtime)
 - TypeScript `>=5.0.0` (peer dep, must be installed in the consuming workspace)
 
-[Unreleased]: https://github.com/owgreen-dev/tsfix/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/owgreen-dev/tsfix/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/owgreen-dev/tsfix/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/owgreen-dev/tsfix/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/owgreen-dev/tsfix/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/owgreen-dev/tsfix/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/owgreen-dev/tsfix/compare/v0.1.1...v0.2.0

@@ -14,7 +14,9 @@ import {
 	runMendLoop,
 	runValidationLoop,
 	discoverTsFiles,
+	detectLibraryMigrations,
 	type Diagnostic,
+	type LibraryMigrationHint,
 	type MendContext,
 	type ValidationLoopResult,
 } from "../src/index.js";
@@ -30,6 +32,7 @@ interface CliArgs {
 	llmModel: string;
 	llmMaxIterations: number;
 	llmBudgetUsd: number | undefined;
+	noLibraryHints: boolean;
 }
 
 interface StackReport {
@@ -90,6 +93,7 @@ function parseArgs(argv: string[]): CliArgs {
 		llmModel: "claude-haiku-4-5",
 		llmMaxIterations: 3,
 		llmBudgetUsd: undefined,
+		noLibraryHints: false,
 	};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
@@ -123,6 +127,8 @@ function parseArgs(argv: string[]): CliArgs {
 				process.exit(2);
 			}
 			args.llmBudgetUsd = v;
+		} else if (a === "--no-library-hints") {
+			args.noLibraryHints = true;
 		} else if (a === "--help" || a === "-h") {
 			printHelp();
 			process.exit(0);
@@ -157,6 +163,12 @@ Layer 2 (opt-in — single-file LLM mend via Anthropic):
                               Cost estimate is 0 for unknown models.
   --llm-max-iterations <N>    Cap on LLM retries (default: 3)
   --llm-budget-usd <amount>   Soft cost cap. Exits with code 3 if exceeded.
+  --no-library-hints          Disable auto-detection of library breaking-change
+                              hints (vite-plugin-svgr v4 ?react migration,
+                              Next.js 15 async params, etc.). When workspace
+                              package.json contains a known migration target,
+                              tsfix injects hints into Layer 2's prompt + skips
+                              Layer 0/1 (whose quick-fix would conflict).
 
 Layer 2 requires ANTHROPIC_API_KEY in the environment.
 
@@ -241,10 +253,26 @@ async function main(): Promise<number> {
 		return 2;
 	}
 
+	// Detect library migrations from the workspace's package.json. When any
+	// apply AND --llm is on, we skip Layer 0/1 — because L0/1 will apply
+	// tsc's quick-fix, which is exactly the misleading fix the migration hint
+	// is meant to override. Without --llm, no migration prompt fires, so L0/1
+	// can run normally.
+	const libraryMigrations: LibraryMigrationHint[] = args.noLibraryHints
+		? []
+		: detectLibraryMigrations(workspaceRoot);
+	const migrationApplies = args.llm && libraryMigrations.length > 0;
+	if (migrationApplies && !args.noLsp) {
+		logger.info(
+			`Library migrations detected (${libraryMigrations.map((h) => h.name).join(", ")}) — skipping Layer 0/1 to let Layer 2 apply the migration target. Use --no-library-hints to disable.`,
+		);
+	}
+	const effectiveNoLsp = args.noLsp || migrationApplies;
+
 	const loop: ValidationLoopResult = runValidationLoop({
 		workspaceRoot,
 		targetFiles,
-		skipLSPFixer: args.noLsp,
+		skipLSPFixer: effectiveNoLsp,
 		dryRun: args.dryRun,
 		logger,
 	});
@@ -288,6 +316,10 @@ async function main(): Promise<number> {
 			workspaceRoot,
 			diagnostics: errorDiags,
 			erroredFiles: Array.from(new Set(errorDiags.map((d: Diagnostic) => d.file))),
+			// Explicitly pass migrations so `runMendLoop` doesn't re-detect.
+			// `[]` is meaningful — it means "we know there are none" — vs
+			// `undefined` which would trigger auto-detect.
+			libraryMigrations,
 		};
 
 		const layer2Start = Date.now();

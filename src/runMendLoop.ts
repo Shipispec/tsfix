@@ -27,6 +27,7 @@ import type { Diagnostic, MendContext } from "./index.js";
 import { resetInProcessTscCache, runInProcessTsc } from "./validatorInProcess.js";
 import { mendSingleFile, type LLMCall, type MendSingleFileResult } from "./mendAgent.js";
 import { stubAndContinue, type AppliedStub } from "./stubAndContinue.js";
+import { detectLibraryMigrations } from "./libraryMigrations.js";
 
 export interface RunMendLoopOptions {
 	context: MendContext;
@@ -120,8 +121,15 @@ function refreshDiagnostics(workspaceRoot: string, files: string[]): Diagnostic[
 }
 
 export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoopResult> {
-	const { context, llm, maxIterations = 3, dryRun = false, stubOnFailure = false, _callLLM } = opts;
+	const { context: rawContext, llm, maxIterations = 3, dryRun = false, stubOnFailure = false, _callLLM } = opts;
 	const startMs = Date.now();
+
+	// Auto-populate libraryMigrations from the workspace's package.json if the
+	// caller didn't set it. To opt out: pass `libraryMigrations: []` explicitly.
+	const context: MendContext =
+		rawContext.libraryMigrations === undefined
+			? { ...rawContext, libraryMigrations: detectLibraryMigrations(rawContext.workspaceRoot) }
+			: rawContext;
 
 	const diagnosticsBefore = context.diagnostics.filter((d) => d.category === "error");
 

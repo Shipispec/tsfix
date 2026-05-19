@@ -1,0 +1,9 @@
+{
+  "description": "SO real-world: Element vs HTMLElement \u2014 .style requires the latter.",
+  "expectedErrorCode": "TS2339",
+  "errorsBeforeMin": 1,
+  "errorsAfterMax": 0,
+  "maxIterations": 3,
+  "mustPass": true,
+  "costUsdMax": 0.01
+}
