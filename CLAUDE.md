@@ -37,7 +37,7 @@ test-matrix/        — 6 project shapes for the cold-install gate
 .github/workflows/  — CI: check-types + vitest + benchmark + matrix + Layer-2 benchmark (gated)
 ```
 
-Read order: `README.md` → `STATUS.md` → `ARCHITECTURE.md` → `tsc-defense-roadmap.md` → `CHANGELOG.md`.
+Read order: `README.md` → `STATUS.md` → `ARCHITECTURE.md` → `ROADMAP.md` → `CHANGELOG.md`.
 
 ## The architecture, summarized
 
@@ -48,7 +48,7 @@ A TSC error has up to four chances to die before reaching the user:
 3. **Deterministic auto-fix (Layer 1)** — `ts.LanguageService.getCodeFixesAtPosition`. TS2304/2305/2551/2552/2724 fix without an LLM call. Two-layer allowlist: error code (`SAFE_FIXABLE_CODES`) and fix name (`SAFE_FIX_NAMES`).
 4. **LLM mend (Layer 2)** — `runMendLoop` → `mendSingleFile` → `getTypeContext` (moat) + Vercel AI SDK + Anthropic. Aider-style SEARCH/REPLACE patches. Bounded retry. Opt-in only.
 
-Layer 3 (multi-file mend via `findReferences()`) and Layer 4 (stub-and-continue escape hatch) are **planned, not shipped**. See `tsc-defense-roadmap.md` § Phase 3-4.
+Layer 4 (stub-and-continue escape hatch via `stubAndContinue` / `runMendLoop({stubOnFailure})`) **shipped in v0.5.0**. Layer 3 (multi-file mend via `findReferences()`) is **planned, not shipped**. See `ROADMAP.md` § Phase 3-4.
 
 ## Where Layer 2 is special
 
@@ -110,7 +110,7 @@ The fixture-driven loop. Different from a spec-pipeline iteration loop — this 
 
 ## When you're done with a session
 
-Update `STATUS.md` with what changed (new fixtures, fixer behavior shifts, Layer-2 prompt tweaks, gaps closed/opened). Update `tsc-defense-roadmap.md` if a phase milestone was reached or a deferred decision got resolved. Update `CHANGELOG.md` if you're cutting a release. The roadmap + STATUS + CHANGELOG triple is the institutional memory.
+Update `STATUS.md` with what changed (new fixtures, fixer behavior shifts, Layer-2 prompt tweaks, gaps closed/opened). Update `ROADMAP.md` if a phase milestone was reached or a deferred decision got resolved. Update `CHANGELOG.md` if you're cutting a release. The roadmap + STATUS + CHANGELOG triple is the institutional memory.
 
 If you change the public API (`src/index.ts` exports), update `README.md` too — the npm page renders the README, and consumers grep it for the function they want.
 
@@ -121,7 +121,7 @@ If you change the public API (`src/index.ts` exports), update `README.md` too �
 - README: front door for OSS consumers
 - STATUS.md: current snapshot, gaps, planned work
 - ARCHITECTURE.md: design rationale (four-layer model, lib-path workaround, TypeChecker walk-up in `getTypeContext`)
-- tsc-defense-roadmap.md: phased plan, decisions (resolved + deferred)
+- ROADMAP.md: phased plan, decisions (resolved + deferred)
 - CHANGELOG.md: release history (Keep-a-Changelog format)
 - docs/internal-orientation.md: original SpecToShip-context README, kept for design history
 - design-docs/installed-exports.md: design notes for a related but separate module (spectoship2's `installedExports.ts`), kept here for historical reasons

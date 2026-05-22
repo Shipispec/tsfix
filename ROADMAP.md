@@ -1,6 +1,6 @@
 # `@shipispec/tsfix` — Project Roadmap
 
-> Generated: 2026-05-03. Revised after feedback pass. Last updated 2026-05-14 (D3 reversed, Phase 2 marked complete after v0.4.0 merge).
+> Generated: 2026-05-03. Last updated 2026-05-22 (v0.6.1 shipped: library-migrations + multi-provider + onLayerEvent). Historical entries below may reference the package's prototype name "tsc-defense-stack" — that's accurate provenance, not a stale link.
 > North star: ship a focused, trustable OSS package that vibe coders can drop into any project — not a super-app.
 
 ---

@@ -98,9 +98,14 @@ Layer 2 is built for the cases the LSP can't statically resolve:
 - `TS7006` — Implicit `any`. The LLM picks the right annotation from surrounding context.
 - `TS2741` — Missing required property. The LLM sees the contextual type and supplies a real value, not a placeholder.
 
-Against a 35-fixture Layer-2 benchmark (3 hand-authored minimal + 2 realistic + 30 ts-morph-generated mutations across TS2339/TS7006/TS2741), **35/35 pass at $0.001/fixture avg, P95 latency ~1.5s on `claude-haiku-4-5`.** Caveat: the 30 generated fixtures are mutations of 3 seeds — real-world diversity will move these numbers; see the realistic 34-fixture bench below.
+tsfix ships two benchmark suites, and it's worth being precise about what each measures:
 
-## Library-aware error recovery (v0.6.0)
+- **Synthetic suite** (in-package, `npm run benchmark:llm`) — hand-authored minimal cases plus ts-morph-generated single-error mutations of a few seed files. These are *easy* by construction (one isolated error, no cross-file ripple) and Layer 2 passes effectively all of them. Useful as a regression gate, **not** as a real-world accuracy claim.
+- **Realistic suite** (34 fixtures drawn from real LLM-repair failures — see the table below) — this is the number to trust. It's where the headline 98.6% / 81.4% figures come from.
+
+If you only read one number, read the realistic suite.
+
+## Library-aware error recovery (v0.6.0+)
 
 A typical TypeScript LLM-repair failure mode: tsc reports `TS2614: Module '"./logo.svg"' has no exported member 'ReactComponent'. Did you mean to use 'import Logo from "./logo.svg"' instead?` The model dutifully follows tsc's quick-fix and emits `import Logo from "./logo.svg"`. **tsc is now green. The dev server is now broken.** Under `vite-plugin-svgr@4`, importing an SVG as a React component requires the `?react` query suffix — `import Logo from "./logo.svg?react"`. The default export is the asset URL, not a component. Quick-fix accuracy ≠ runtime correctness.
 
@@ -142,7 +147,7 @@ The same release hardened the system prompt against the LLM-repair failure modes
 
 Measured against a 34-fixture corpus drawn from real LLM-repair failures in adjacent projects (24 single-file + 10 multi-file), n=3 per cell:
 
-| Surface | v0.5.0 | v0.6.0 | Δ |
+| Surface | v0.5.0 | v0.6.1 | Δ |
 |---|---|---|---|
 | Single-file pass rate | 95.8% | **98.6%** | +2.8pp |
 | Multi-file pass rate | 23.3% | **40.0%** | +16.7pp |
@@ -151,7 +156,7 @@ Measured against a 34-fixture corpus drawn from real LLM-repair failures in adja
 | Cost per full bench | — | **$0.21** | — |
 | Cost per case (`claude-haiku-4-5`) | — | **<$0.005** | — |
 
-Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is the deferred answer.
+The mend-quality gains landed in v0.6.0 (library-migrations, crash hardening, anti-patterns); v0.6.1 adds multi-provider + telemetry without changing these numbers. Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is the deferred answer.
 
 ## The four-layer model
 
@@ -257,29 +262,39 @@ error: this workspace has no TypeScript installed.
 run: npm install --save-dev typescript
 ```
 
+## Build from source
+
+tsfix is plain TypeScript bundled with esbuild — no special toolchain.
+
+```bash
+git clone https://github.com/owgreen-dev/tsfix
+cd tsfix
+npm install
+
+npm run check-types   # tsc --noEmit — must pass
+npm test              # vitest unit suite
+npm run build         # bundle to dist/ (index.js, cli.js, *.d.ts)
+```
+
+Run a single test file or pattern:
+
+```bash
+npx vitest run src/libraryMigrations.test.ts
+npx vitest run -t "auto-populates libraryMigrations"
+```
+
+Try your local build against a real project without publishing:
+
+```bash
+npm run build
+node dist/cli.js --workspace /path/to/some/broken-project
+```
+
+Requires Node `>=20.9.0`. The package has no `dev` watch script — the loop is edit → `npm run check-types` → `npm test`.
+
 ## Contributing
 
-### Adding a Layer-0 fix
-
-1. **Probe** — write a tiny test workspace with the exact error you want fixable. Drop it under `fixtures/<descriptive-name>/` with an `expected.json` declaring `errorsBefore`, `errorsAfterMax`, `lspFixesAppliedMin/Max`, and `mustPass`.
-2. **Verify** — run `npm run benchmark -- --fixture <name>` and inspect what the language service offers (the `fix.fixName` field).
-3. **Allowlist change** — if `fixName` is unsafe (`fixMissingFunctionDeclaration`, `addMissingPropertyAndOptional`, etc.), document why we don't trust it. Otherwise, add the error code to `SAFE_FIXABLE_CODES` and the fix name to `SAFE_FIX_NAMES` in `src/tsLanguageServiceFixer.ts`.
-4. **Lock it in** — confirm all existing fixtures still pass (`npm run benchmark`). Open a PR.
-
-Each new code/fix-name pair gets its own fixture. We don't trust the language service blindly — we trust it under specific, pinned conditions.
-
-### Adding a Layer-2 fixture
-
-Layer-2 fixtures live under `fixtures/` alongside Layer-0 ones, identified by `expectedErrorCode` (singular) or `costUsdMax` in their `expected.json`. The Layer-0 benchmark skips them; `npm run benchmark:llm` runs them against Anthropic.
-
-- Hand-author one under `fixtures/mend-<descriptive-name>/` for new error classes.
-- Or generate one via `npm run generate-fixtures -- --code=TS2339 --seed=apiRouter.ts --count=10 --rng-seed=42`. The generator validates every mutation through Layer 0 first to confirm Layer 0 abstains (otherwise it's not Layer 2 territory).
-
-### Pre-publish gates
-
-- `npm run benchmark` — Layer 0, 14 fixtures, no network.
-- `npm run benchmark:llm` — Layer 2, 35 fixtures, requires `ANTHROPIC_API_KEY`. Total cost ~$0.04 per run.
-- `npm run matrix` — runs the local tarball against 6 distinct project shapes (Next.js, Vite + React, plain `nodenext`, plain `bundler`, plain CommonJS, monorepo with project references). Adds ~3 min; run manually before tagging.
+See **[CONTRIBUTING.md](CONTRIBUTING.md)** for the full guide: dev setup, how to add a Layer-0 fix or a Layer-2 fixture, how to extend the library-migration registry, and the pre-publish gates. PRs that add a library to the migration registry are especially welcome — that's the highest-leverage contribution.
 
 ## License
 
@@ -287,8 +302,8 @@ MIT.
 
 ## See also
 
-- `CHANGELOG.md` — release notes per version.
-- `ARCHITECTURE.md` — internal design rationale (the four-layer model, the workspace lib-path workaround).
-- `STATUS.md` — current snapshot, gaps, and roadmap state.
-- `tsc-defense-roadmap.md` — phased plan.
-- `docs/internal-orientation.md` — the original SpecToShip-context README, kept for contributors who want the design history.
+- `CHANGELOG.md` — release notes per version (authoritative for current state).
+- `CONTRIBUTING.md` — dev setup, how to add a fix/fixture, how to extend the migration registry.
+- `ARCHITECTURE.md` — design rationale (the four-layer model, the workspace lib-path workaround).
+- `ROADMAP.md` — phased plan and resolved/deferred decisions.
+- `docs/blog-tsc-correctness-is-not-runtime-correctness.md` — the "tsc-correctness ≠ runtime-correctness" writeup (the svgr `?react` case).

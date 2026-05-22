@@ -1,6 +1,6 @@
-# TSC Defense Stack — Architecture
+# tsfix — Architecture
 
-> Companion to `README.md` (orientation), `STATUS.md` (current state), `CLAUDE.md` (working principles). Snapshot: 2026-05-03.
+> Companion to `README.md` (orientation), `STATUS.md` (current state), `CLAUDE.md` (working principles). Design rationale; last reviewed 2026-05-22 (v0.6.1). The package was originally prototyped as "TSC Defense Stack" before being extracted and published as `@shipispec/tsfix` — some history below still uses that name.
 
 This doc explains *why* the package is shaped the way it is. If you only need to use the API, read `README.md`. If you only need to know what's working/broken, read `STATUS.md`. Read this when you're about to add a layer, change the trust model, or wonder why something seems indirect.
 
