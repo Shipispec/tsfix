@@ -1,6 +1,6 @@
 # tsfix — Status
 
-> Snapshot: 2026-05-14. Read alongside `README.md` (orientation), `CLAUDE.md` (working principles), `tsc-defense-roadmap.md` (phased plan), `CHANGELOG.md` (release history).
+> **For the current release state, `CHANGELOG.md` is authoritative.** This file is a periodic deep-snapshot; last full refresh 2026-05-14 (v0.4.0-era). Current release is **v0.6.1** (library-migrations + multi-provider + onLayerEvent — see CHANGELOG). Read alongside `README.md` (orientation), `CLAUDE.md` (working principles), `ROADMAP.md` (phased plan), `CHANGELOG.md` (release history).
 
 ## TL;DR
 
