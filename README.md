@@ -1,14 +1,26 @@
 # tsfix
 
-> Library-aware TypeScript error recovery for LLM-generated code. Fix `TS2304`, `TS2305`, `TS2551`, `TS2552`, `TS2724` deterministically with the same engine that powers VS Code's Quick Fix. Escalate the rest to a single-file LLM mend that knows what tsc's quick-fix gets wrong about your installed libraries.
+> **TypeScript error recovery for LLM-generated code.** When Cursor / Claude Code / Copilot / your spec-to-code agent leaves you with a wall of `tsc --noEmit` errors, tsfix repairs them — **library-aware** mend on the hard ones, deterministic VS Code Quick Fix on the trivial ones. **98.6% pass on a real-world single-file bench at <$0.005 per fix.** MIT, BYOK.
 
-`@shipispec/tsfix` is what you reach for when you've just generated a few hundred files of TypeScript with an LLM and `tsc --noEmit` is screaming at you. It runs in layers:
+<!-- demo.gif goes here — broken project → `npx @shipispec/tsfix --workspace . --llm` → green tsc. See docs/demo/demo.tape -->
 
-- **Layer 0/1** — Deterministic. Borrows the same TypeScript Language Service that powers VS Code's "Quick Fix" lightbulb and runs it as a CLI. Fixes typos, missing imports, and did-you-mean errors with no LLM, no network, no config.
-- **Layer 2** — Opt-in. A single-file LLM mend agent (Vercel AI SDK) that picks up what Layer 0 abstains on: TS2339 (property doesn't exist), TS7006 (implicit `any`), TS2741 (missing required prop), and other cases where the LSP can't statically derive the fix. Driven by **type-context injection** — when tsc says "Property 'foo' doesn't exist on type 'Bar'", tsfix resolves the `Bar` declaration via the TypeChecker and feeds its source to the model. **Multi-provider** (Anthropic / OpenAI / Google) via `--llm-provider`. As of v0.6.0, also **library-aware**: tsfix reads your `package.json` and injects breaking-change hints for known libraries (`vite-plugin-svgr`, `next`, `ai`, `drizzle-orm`) so the model picks the runtime-correct fix instead of tsc's misleading quick-fix.
-- **Layer 4** — Escape hatch. When Layer 2 can't resolve the last few errors, opt in to `// @ts-expect-error - tsfix: ...` directives that self-destruct once the underlying issue is fixed elsewhere. tsfix never leaves the workspace worse than it found it.
+## Why tsfix exists
 
-Layer 2 only runs if you explicitly call its API or set `ANTHROPIC_API_KEY` and pass `--llm` to the CLI. The default `tsfix --workspace ...` CLI is still **Layer 0/1 only**.
+tsfix is built for the *output of code generators*, not human-written TypeScript. The thing it does that nothing else does: **it knows what tsc's own quick-fix gets wrong about your installed libraries.**
+
+When `vite-plugin-svgr@4` is in your `package.json` and tsc says *"Module '"./logo.svg"' has no exported member 'ReactComponent'. Did you mean `import Logo from "./logo.svg"`?"*, tsc is right about types and wrong about runtime. The default import resolves to the asset URL string under vite, not a component. **tsc is now green. The dev server is now broken.** An LLM dutifully following tsc's quick-fix produces code that type-checks and crashes the page.
+
+tsfix reads your `package.json` on every Layer 2 invocation, matches installed deps against a built-in registry of known breaking changes (vite-plugin-svgr, Next.js 15 async params, Vercel AI SDK v3, Drizzle ORM), and injects the correct migration hint into the LLM prompt's headline. The model then emits `import Logo from "./logo.svg?react"` — tsc green AND the dev server works.
+
+That's the one-sentence pitch. The rest of the package is a careful, layered, cost-aware way to deliver it across every TS error class.
+
+## The layers, opt-in by layer
+
+- **Layer 1 (default, deterministic)** — Auto-fix typos, missing imports, and did-you-mean errors via the same TypeScript Language Service that powers VS Code's "Quick Fix" lightbulb. Zero network, zero LLM cost, zero config. Catches roughly half of LLM-generated TS errors before you ever pay for an LLM call.
+- **Layer 2 (opt-in via `--llm`)** — Single-file LLM mend via the Vercel AI SDK. Multi-provider: **Anthropic / OpenAI / Google** (`--llm-provider`). Library-aware (above). Driven by **type-context injection** — when tsc says *"Property 'foo' doesn't exist on type 'Bar'"*, tsfix resolves `Bar`'s declaration via the TypeChecker and feeds its source to the model. That's the architectural moat: every other LLM-driven repair tool uses generic grep or repo-maps.
+- **Layer 4 (library-only, opt-in via `runMendLoop({stubOnFailure: true})`)** — Escape hatch. When Layer 2 can't resolve the last few errors, inserts `// @ts-expect-error - tsfix: ...` directives that self-destruct once the underlying issue is fixed elsewhere. tsfix never leaves the workspace worse than it found it.
+
+The default CLI is **Layer 0/1 only** — no network calls, no surprises. Layer 2 only runs when you opt in with `--llm` and have a provider key in your environment.
 
 ## Before / after (Layer 0)
 
