@@ -17,13 +17,18 @@ Set Theme "Dracula"
 Set TypingSpeed 50ms
 Set PlaybackSpeed 1.0
 
-# --- silent setup: cd into the fixture and restore the broken file in case
-#     a previous run mutated it. None of this appears in the GIF.
+# --- silent setup: cd into the fixture, restore the broken file in case
+#     a previous run mutated it, and ensure tsfix is installed globally so
+#     the visible recording shows a clean `tsfix` command (no npx install
+#     prompt mid-GIF). None of this appears in the rendered output.
 Hide
 Type "cd fixture"
 Enter
 Type "git checkout -- src/Header.ts 2>/dev/null || true"
 Enter
+Type "command -v tsfix >/dev/null || npm install -g @shipispec/tsfix@latest"
+Enter
+Sleep 15s
 Type "clear"
 Enter
 Show
@@ -41,9 +46,9 @@ Enter
 Sleep 3s
 
 # Run tsfix. Library-migrations registry catches vite-plugin-svgr@^4.
-Type "npx @shipispec/tsfix --workspace . --llm"
+Type "tsfix --workspace . --llm"
 Enter
-Sleep 4s
+Sleep 5s
 
 # Show the fixed file — note the `?react` suffix the LLM added, NOT tsc's wrong default-import suggestion.
 Type "cat src/Header.ts"
