@@ -1,5 +1,5 @@
 /**
- * TSC Defense Stack benchmark runner.
+ * tsfix benchmark runner.
  *
  * Snapshots each fixture's source files (so the LSP fixer's in-place edits
  * don't permanently mutate them), runs the standalone CLI on every fixture,
@@ -184,7 +184,7 @@ function parseArgs(argv: string[]): { fixture?: string; json: boolean } {
 
 function printHumanReport(results: FixtureResult[]): void {
 	const w = process.stderr;
-	w.write(`\nTSC Defense Stack Benchmark — ${results.length} fixture(s)\n\n`);
+	w.write(`\ntsfix benchmark — ${results.length} fixture(s)\n\n`);
 
 	const nameWidth = Math.max(...results.map((r) => r.name.length), 12);
 	for (const r of results) {

@@ -30,6 +30,8 @@ The point: tsc's quick-fix would type-check while breaking the dev server (the d
   cd ..
   ```
 
+- The tape **silently** installs `@shipispec/tsfix` globally on first run (`npm install -g @shipispec/tsfix@latest`) so the visible recording can show a clean `tsfix --workspace . --llm` command without an npx install prompt mid-GIF. If your Node setup needs `sudo` for global installs, run that install yourself once before recording.
+
 ## Record
 
 From this directory:

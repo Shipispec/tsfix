@@ -284,7 +284,7 @@ function makeLogger(captureLines: string[], verbose: boolean) {
 
 function printHumanReport(r: StackReport): void {
 	const w = process.stderr;
-	w.write(`\nTSC Defense Stack — ${r.workspace}${r.dryRun ? " (dry-run)" : ""}\n`);
+	w.write(`\ntsfix — ${r.workspace}${r.dryRun ? " (dry-run)" : ""}\n`);
 	w.write(`  errors before: ${r.errorsBefore}\n`);
 	if (r.lspFixer?.ran) {
 		const verb = r.dryRun ? "would apply" : "applied";
