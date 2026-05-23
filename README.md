@@ -56,6 +56,8 @@ npx @shipispec/tsfix --workspace . --json
 
 ### All flags
 
+**Core (Layer 0/1):**
+
 | Flag | Meaning |
 |---|---|
 | `--workspace <path>` | Required. Directory containing your `tsconfig.json`. |
@@ -66,7 +68,40 @@ npx @shipispec/tsfix --workspace . --json
 | `--verbose` | Per-fix logging. |
 | `--help` | Print usage. |
 
-The CLI does not run Layer 2 — call the library API for that (below).
+**Layer 2 (LLM mend — opt-in, sends source to your chosen provider):**
+
+| Flag | Meaning |
+|---|---|
+| `--llm` | Escalate errors that survive Layer 0/1 to Layer 2. Requires the provider's API key in the environment. |
+| `--llm-provider <name>` | `anthropic` (default) \| `openai` \| `google`. Each provider reads its own env var: `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY`. |
+| `--llm-model <name>` | Model name. Defaults per provider: `claude-haiku-4-5` / `gpt-5-mini` / `gemini-2.5-flash`. |
+| `--llm-max-iterations <N>` | Cap on LLM retries (default: `3`). Each iteration sends the still-erroring files plus updated diagnostics. |
+| `--llm-budget-usd <amount>` | Soft cost cap; exits with code `3` if exceeded. Cost estimates use a per-provider pricing table (snapshot 2026-05-16) — unknown models log a warning and don't trigger the cap. |
+| `--no-library-hints` | Disable auto-detection of library breaking-change hints from `package.json`. |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Workspace is clean (or Layer 2 cleared all errors). |
+| `1` | Errors remain. |
+| `2` | Bad arguments / missing API key / `--llm` + `--dry-run` rejected. |
+| `3` | Layer 2 budget cap (`--llm-budget-usd`) exceeded. Partial work is persisted to disk. |
+
+### Using in CI
+
+`npx @shipispec/tsfix` prints `npm warn exec The following package was not found and will be installed: @shipispec/tsfix@<version>` on every cold runner. To avoid the warning and skip the install prompt, either install once at workflow start:
+
+```bash
+npm install -g @shipispec/tsfix@latest
+tsfix --workspace .
+```
+
+…or pass `--yes` to npx:
+
+```bash
+npx --yes @shipispec/tsfix --workspace .
+```
 
 ## What Layer 0 fixes
 
