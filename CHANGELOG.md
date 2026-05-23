@@ -4,6 +4,14 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-05-23
+
+**Cosmetic patch.** No behavior change; no API surface change. Drops the stale prototype-era "TSC Defense Stack" string from CLI output (was the human-report banner header), replaced with "tsfix" to match the published package name. Surfaced while debugging a vhs demo recording — the recording would otherwise have shown stale branding above the fold. 147/147 tests still pass.
+
+### Changed
+- **CLI human-report header** now prints `tsfix — <workspace>` instead of `TSC Defense Stack — <workspace>` (`cli/run-stack.ts:287`).
+- **Benchmark runner header** now prints `tsfix benchmark — N fixture(s)` instead of `TSC Defense Stack Benchmark — N fixture(s)` (`benchmark/run-benchmark.ts:187`; contributor-facing, not shipped in the npm tarball).
+
 ## [0.6.1] - 2026-05-19
 
 **Integration release.** Combines v0.6.0's library-aware error recovery with the multi-provider + telemetry work that landed on `main` between v0.5.0 and v0.6.0. The npm-published v0.6.0 was built from a stale local checkout and shipped without the Tier 2 (multi-provider) and Tier 3 (onLayerEvent + runFullStack) features that were already on `main`. v0.6.1 is the canonical "everything-since-0.5.0" release; users upgrading from v0.5.0 should jump straight to v0.6.1.
@@ -306,7 +314,8 @@ Initial public release. **Layers 0–1 only** (deterministic detection + auto-fi
 - Node `>=20.9.0` (matches VS Code Extension Host runtime)
 - TypeScript `>=5.0.0` (peer dep, must be installed in the consuming workspace)
 
-[Unreleased]: https://github.com/owgreen-dev/tsfix/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/owgreen-dev/tsfix/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/owgreen-dev/tsfix/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/owgreen-dev/tsfix/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/owgreen-dev/tsfix/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/owgreen-dev/tsfix/compare/v0.4.0...v0.5.0
