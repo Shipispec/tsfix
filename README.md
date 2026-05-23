@@ -2,7 +2,7 @@
 
 > **TypeScript error recovery for LLM-generated code.** When Cursor / Claude Code / Copilot / your spec-to-code agent leaves you with a wall of `tsc --noEmit` errors, tsfix repairs them — **library-aware** mend on the hard ones, deterministic VS Code Quick Fix on the trivial ones. **98.6% pass on a real-world single-file bench at <$0.005 per fix.** MIT, BYOK.
 
-<!-- demo.gif goes here — broken project → `npx @shipispec/tsfix --workspace . --llm` → green tsc. See docs/demo/demo.tape -->
+![tsfix demo: broken vite-plugin-svgr import → tsfix --llm → tsc green](docs/demo/demo.gif)
 
 ## Why tsfix exists
 
