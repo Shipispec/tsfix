@@ -6,7 +6,6 @@ Read first:
 - `internal/STATUS.md` — what's working, what's planned, current gaps
 - `ARCHITECTURE.md` — why the package is shaped the way it is
 - `tsc-defense-roadmap.md` — phased plan with open decisions
-- `../.claude/CLAUDE.md` — working principles (small allowlist, fixture-pinned trust model)
 
 ---
 

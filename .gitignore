@@ -5,3 +5,4 @@ fixtures/_shared/node_modules/
 .DS_Store
 *.log
 *.tgz
+.claude/
