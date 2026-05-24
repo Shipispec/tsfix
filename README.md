@@ -28,6 +28,28 @@ That's the one-sentence pitch. The rest of the package is a careful, layered, co
 
 The default CLI is **Layer 0/1 only** — no network calls, no surprises. Layer 2 only runs when you opt in with `--llm` and have a provider key in your environment.
 
+## Who is this for?
+
+Three concrete shapes of user, with the invocation that matches each:
+
+**Solo dev using Cursor / Claude Code / Copilot.** You let an LLM generate a few hundred TS files in a session, hit `tsc --noEmit`, and stare at a wall of errors. Layer 1 catches the typos and missing imports deterministically; Layer 2 takes the rest at ~$0.005 per file on haiku-4-5.
+
+```bash
+npx @shipispec/tsfix --workspace . --llm
+```
+
+**Platform team running a spec-to-code agent in CI.** Your codegen pipeline emits a generated workspace; tsfix is the gate before it ships. `runFullStack` gives you Layer 0/1/2/4 in one call with per-event telemetry and a hard cost cap.
+
+```bash
+tsfix --workspace ./generated --llm --llm-budget-usd 0.50 --json
+```
+
+**Migration engineer doing a framework upgrade.** You're moving to Next.js 15 / React 19 / ESLint 9 / Drizzle and don't want the LLM tax for the trivial fixes. Layer 0/1 alone catches did-you-mean errors with no network, no LLM cost, no config; you pay only for the cases the codemod can't determine deterministically (and even then, the library-migration registry already knows about Next.js 15's async `params`, vite-plugin-svgr's `?react` suffix, etc.).
+
+```bash
+tsfix --workspace .   # Layer 0/1 only — no API key needed
+```
+
 ## Before / after (Layer 0)
 
 ```
@@ -211,6 +233,19 @@ Measured against a 34-fixture corpus drawn from real LLM-repair failures in adja
 
 The mend-quality gains landed in v0.6.0 (library-migrations, crash hardening, anti-patterns); v0.6.1 adds multi-provider + telemetry without changing these numbers. Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is the deferred answer.
 
+## How tsfix differs from adjacent tools
+
+| Tool | Scope | Deterministic | LLM-augmented | Library-aware | Latest |
+|---|---|---|---|---|---|
+| `tsc --noEmit` | error detection (no fix) | — | — | — | active (TypeScript) |
+| [`microsoft/ts-fix`](https://github.com/microsoft/ts-fix) | apply tsc codefixes (CLI) | ✓ | — | — | no npm release; last human commit Mar 2025 |
+| [`ian-craig/ts-autofix`](https://github.com/ian-craig/ts-autofix) | apply tsc codefixes | ✓ | — | — | last commit Sep 2022 |
+| [`airbnb/ts-migrate`](https://github.com/airbnb/ts-migrate) | JS → TS migration *(different job)* | ✓ | — | — | Nov 2022 (npm) |
+| [`@2bad/tsfix`](https://www.npmjs.com/package/@2bad/tsfix) | ESM extension fixer | ✓ | — | — | npm-deprecated → `tsdown` |
+| **`@shipispec/tsfix`** | **TS error → working code** | **✓ Layer 0/1** | **✓ Layer 2 (opt-in)** | **✓** | **active (v0.6.2, 2026-05-23)** |
+
+The category has shape: a couple of dormant tsc-codefix wrappers (one from Microsoft, never published to npm), a deprecated ESM-extension tool, and ts-migrate (a different job — JS→TS migration). tsfix is the only living, npm-published, library-aware option that combines a deterministic LSP layer with an opt-in LLM mend layer.
+
 ## The four-layer model
 
 ```
@@ -293,15 +328,29 @@ Other Layer 2 exports:
 - `parseEditBlocks(text)` / `applyEditBlocks(opts)` — Aider-style SEARCH/REPLACE patch parser + 3-tier fuzzy applier.
 - Types: `MendContext`, `LayerEvent`, `Diagnostic`, plus the per-function option/result types.
 
+## Privacy & telemetry
+
+**tsfix has no analytics, no telemetry, no phone-home, no background processes, and no config files written outside the workspace you point it at.** There is no tsfix-operated server. Nothing about your code, your usage, your machine, or your existence is sent anywhere by tsfix itself.
+
+What goes over the network is determined entirely by which layers you run:
+
+| Layer | Network surface |
+|---|---|
+| **Layer 0/1** (default CLI) | **Zero network calls.** Pure local TypeScript Language Service usage. Safe on air-gapped machines. |
+| **Layer 2** (opt-in, `--llm`) | One HTTPS call per iteration to the LLM provider *you* chose (`anthropic` / `openai` / `google`) via the Vercel AI SDK. The errored file(s), the tsc diagnostics, and the type-context slices tsfix resolves via the TypeChecker are sent in the prompt. **Nothing else.** |
+| **Layer 4** (opt-in, library-only) | Zero network. Pure local file edits. |
+
+**Your API key never leaves your environment.** tsfix reads it from `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` (whichever provider you picked) and passes it directly to the provider SDK. tsfix does not log, persist, or forward it.
+
+**If your code is sensitive, don't enable Layer 2.** Stay on the default `tsfix --workspace .` (Layer 0/1) — it never connects to anything. Layer 2 is explicit opt-in via `--llm` on the CLI or `runMendLoop({ llm: {...} })` in the library.
+
 ## Trust model
 
 Layer 0/1 loads `typescript` from your workspace's `node_modules` — it does **not** bundle its own. This ensures the fixer behaves identically to the `tsc` your project actually compiles with.
 
 > **Run tsfix only on workspaces you trust.** Loading `typescript` from an attacker-controlled `node_modules` is equivalent to running `node_modules/.bin/tsc` against it.
 
-**Network surface (Layer 0/1):** none. No telemetry, no calls home, no background processes, no config files written outside `--workspace`.
-
-**Network surface (Layer 2):** every `mendSingleFile` call hits Anthropic's API via the Vercel AI SDK. The source files in `MendContext.erroredFiles` and the resolved type-context slices are sent in the prompt. If your code is sensitive, do not call Layer 2 — the CLI never does, and the library exports are explicit.
+Layer 2's provider SDKs (`@ai-sdk/anthropic` / `@ai-sdk/openai` / `@ai-sdk/google`) are externalized from tsfix's bundle — they load lazily from your `node_modules` only if you actually invoke a given provider. A user who never runs Layer 2 never loads any AI SDK code.
 
 ## Engines
 
