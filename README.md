@@ -10,6 +10,8 @@
 
 ![tsfix demo: broken vite-plugin-svgr import → tsfix --llm → tsc green](docs/demo/demo.gif)
 
+📖 **Background read** — *[tsc-correctness ≠ runtime-correctness](https://dev.to/oscar_green_2836be55d3b02/tsc-correctness-runtime-correctness-3ol5)*: the design thinking behind tsfix's library-migration registry, with two security-grade case studies (`dangerouslySetInnerHTML` as an XSS escape, `bcrypt` → `crypto.subtle` substitution) and the strategic bet on structured-knowledge moats.
+
 ## Why tsfix exists
 
 tsfix is built for the *output of code generators*, not human-written TypeScript. The thing it does that nothing else does: **it knows what tsc's own quick-fix gets wrong about your installed libraries.**
@@ -408,4 +410,4 @@ MIT.
 - `CONTRIBUTING.md` — dev setup, how to add a fix/fixture, how to extend the migration registry.
 - `ARCHITECTURE.md` — design rationale (the four-layer model, the workspace lib-path workaround).
 - `ROADMAP.md` — phased plan and resolved/deferred decisions.
-- `docs/blog-tsc-correctness-is-not-runtime-correctness.md` — the "tsc-correctness ≠ runtime-correctness" writeup (the svgr `?react` case).
+- ["tsc-correctness ≠ runtime-correctness"](https://dev.to/oscar_green_2836be55d3b02/tsc-correctness-runtime-correctness-3ol5) — the design writeup, published on dev.to. Source lives at `docs/blog-tsc-correctness-is-not-runtime-correctness.md`.
