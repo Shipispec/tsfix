@@ -1,0 +1,86 @@
+name: "Suggest a library for the migration registry"
+description: "Propose a library whose tsc-quick-fix is wrong at runtime, so the LLM should be hinted to a different fix."
+title: "[registry] Add <library>@<version> migration hint"
+labels:
+  - "library-registry"
+  - "good first issue"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The library-migration registry is tsfix's highest-leverage contribution path. Each entry lets Layer 2 steer the LLM away from a tsc quick-fix that is right-about-types and wrong-about-runtime. See `src/libraryMigrations.ts` for existing entries and `CONTRIBUTING.md` for the full registry-extension guide.
+
+        **Bar for inclusion:** an entry must correspond to a real migration where tsc's own quick-fix is wrong at runtime (type-checks but breaks). General TypeScript advice does not belong here.
+
+  - type: input
+    id: library-name
+    attributes:
+      label: Library name (npm package)
+      placeholder: "vite-plugin-svgr"
+    validations:
+      required: true
+
+  - type: input
+    id: library-versions
+    attributes:
+      label: Affected version range
+      description: Which major versions does the migration apply to? (`minMajor`, optional `maxMajor`)
+      placeholder: "v4+ (no upper bound)"
+    validations:
+      required: true
+
+  - type: input
+    id: ts-codes
+    attributes:
+      label: TS error code(s) tsc emits
+      placeholder: "TS2614, TS2305"
+    validations:
+      required: true
+
+  - type: textarea
+    id: wrong-fix
+    attributes:
+      label: The wrong fix (the one tsc / LLMs reach for)
+      description: Paste the code an LLM would emit if it followed tsc's quick-fix suggestion.
+      render: typescript
+      placeholder: |
+        import Logo from "./logo.svg";
+    validations:
+      required: true
+
+  - type: textarea
+    id: right-fix
+    attributes:
+      label: The right fix (the migration-correct form)
+      description: Paste the code tsfix should steer the LLM toward.
+      render: typescript
+      placeholder: |
+        import Logo from "./logo.svg?react";
+    validations:
+      required: true
+
+  - type: textarea
+    id: why-wrong
+    attributes:
+      label: Why tsc's fix is wrong at runtime
+      description: One paragraph explaining what breaks (silent runtime failure, type-erasure mismatch, security regression, etc.).
+      placeholder: |
+        Under vite-plugin-svgr v4, the default import resolves to the asset URL string,
+        not a React component. tsc accepts it because the *.svg ambient declaration matches,
+        but rendering `<Logo />` throws "Logo is not a function" at runtime.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction (optional but accelerates merge)
+      description: A self-contained workspace (package.json + tsconfig.json + the one failing file). See `docs/demo/fixture/` for the shape we use.
+      render: text
+
+  - type: textarea
+    id: docs
+    attributes:
+      label: Upstream migration docs / changelog link
+      description: Where in the library's own docs is the migration documented?
+      placeholder: "https://github.com/pd4d10/vite-plugin-svgr/releases/tag/v4.0.0"

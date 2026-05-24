@@ -1,0 +1,72 @@
+name: "Layer 0/1 produced a bad fix"
+description: "tsfix's deterministic LSP fixer applied a fix that was wrong — broke the build, changed semantics, or replaced a typo with the wrong identifier."
+title: "[layer-0] Bad fix for TS<code>: <one-line summary>"
+labels:
+  - "bug"
+  - "layer-0"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Layer 0/1 is the deterministic auto-fixer (no LLM). It only applies fixes from a strict allowlist (`SAFE_FIXABLE_CODES` × `SAFE_FIX_NAMES` in `src/tsLanguageServiceFixer.ts`). A bad Layer-0 fix is a serious bug — the entire premise is that these fixes are safe enough to apply unsupervised.
+
+  - type: input
+    id: ts-version
+    attributes:
+      label: tsfix version
+      placeholder: "0.6.2"
+    validations:
+      required: true
+
+  - type: input
+    id: typescript-version
+    attributes:
+      label: TypeScript version in your workspace
+      description: tsfix loads tsc from your workspace's node_modules — different TS versions can emit different fixes.
+      placeholder: "5.9.3"
+    validations:
+      required: true
+
+  - type: input
+    id: error-code
+    attributes:
+      label: TS error code tsfix tried to fix
+      placeholder: "TS2552"
+    validations:
+      required: true
+
+  - type: textarea
+    id: before
+    attributes:
+      label: The code BEFORE tsfix ran
+      render: typescript
+    validations:
+      required: true
+
+  - type: textarea
+    id: after
+    attributes:
+      label: The code AFTER tsfix ran (the bad fix)
+      render: typescript
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What the fix should have been (if applicable) — or "tsfix should have abstained"
+      render: typescript
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: Self-contained workspace, or a `git clone` + steps. Tsfix repro fixtures live under `fixtures/<name>/` in this repo if you want to PR one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tsfix-output
+    attributes:
+      label: Full tsfix output (run with --verbose)
+      render: text
