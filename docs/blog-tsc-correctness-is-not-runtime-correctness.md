@@ -1,6 +1,6 @@
-# tsc-correctness ≠ runtime-correctness: a story about three characters
+# tsc-correctness ≠ runtime-correctness
 
-*Published with tsfix v0.6.0, 2026-05-19.*
+*Published with tsfix v0.6.2, 2026-05-24.*
 
 Here is a TypeScript error you have probably seen.
 
@@ -69,28 +69,35 @@ Moving the same two sentences to the **headline `taskDescription`** — the firs
 
 This is consistent with what we know about long-context attention falloff and how Claude in particular interprets the "task" framing: the model treats the headline as *what it's actually being asked to do* and weights the rest of the prompt against it. "Library migration: vite-plugin-svgr" is read as "the user knows about this migration; whatever quick-fix tsc is suggesting, the migration is the reason." That single reframing overrides the gravity well of "tsc says X."
 
-## The wider pattern: tsc-correctness ≠ runtime-correctness
+## The same gap, with worse consequences
 
-Once you start looking for this pattern you see it everywhere LLMs touch typed code:
+The svgr case is the easy version of the failure mode: a crashed dev server is loud, immediate, and obviously broken. Move the same dynamic into security territory and the failure goes quiet.
 
-- `as keyof T` to silence a TS7053 index-signature error when the key is a runtime string — type-passes, throws at runtime when the key isn't actually a property.
-- Substituting `crypto.subtle.digest` for a missing `bcrypt` import — type-passes, ships an unsalted hash to production.
-- `dangerouslySetInnerHTML` to dodge a children-type mismatch — type-passes, opens an XSS hole.
-- Dropping a function call argument to dodge a TS2554 mismatch — type-passes, silently changes the call's behavior.
+**Case 1 — `dangerouslySetInnerHTML` as a children-type escape hatch.** An LLM is asked to render some user-controlled HTML in a React component. The component signature says `children: string`, the input is an HTML string, tsc complains. The path of least resistance — and one I've seen models take — is to switch the rendering to `dangerouslySetInnerHTML={{ __html: input }}`. The error vanishes. The XSS hole opens. Same three-character collision: React's type system *correctly* warns that an HTML string isn't a React node; tsc enforces it; the LLM picks the dodge that makes the type-checker happy. The runtime-correct fix is to render the text as JSX (`{input}` auto-escapes) or sanitize via DOMPurify before mounting. The type system has no way to know which of those you wanted.
 
-Every one of these is the same shape: **tsc is a static system reasoning about types; the program is a dynamic system that has to actually work.** A repair that prioritizes the first over the second is the kind of fix that makes the build green and the production page red.
+**Case 2 — substituting `crypto.subtle.digest` for a missing `bcrypt` import.** A repo's `package.json` lists `bcrypt`; the source imports it; an LLM-generated refactor accidentally removes the import line. tsc emits `Cannot find name 'bcrypt'. Did you mean 'crypto'?` — and the LLM dutifully takes the suggestion, switching `bcrypt.hash(password, 10)` to `crypto.subtle.digest("SHA-256", encoder.encode(password))`. tsc is happy. The code compiles. An unsalted, un-adaptive SHA-256 of every user password is now shipping to production. Every detail of tsc's reasoning was correct — `crypto` *is* the closest in-scope identifier, and SHA-256 *does* return a digest — but the runtime semantics are catastrophically different from a salted, adaptive-cost password hash.
 
-tsfix v0.6.0 has system-prompt rules against all four. They're not magic — the model can still produce a bad fix — but they shift the prior. On our `as keyof T` benchmark case, the fix rate went from 0/3 to 3/3.
+Both cases are the same shape as svgr, just with stakes that get someone fired instead of a broken page reload. **tsc is a static system reasoning about types; the program is a dynamic system that has to actually work.** A repair that prioritizes the first over the second is the kind of fix that makes the build green and the security report red.
 
-## What this means for the field
+tsfix v0.6.0 added explicit prompt-level rules against both of these (plus `as keyof T` to silence index-signature errors, and dropping arguments to silence TS2554). They're not magic — the model can still produce a bad fix — but they shift the prior. Across the bench, the cases that exercise these patterns went from 0/3 to 3/3 functional-and-secure.
 
-The next year of LLM coding tools is going to be lived in this gap. Type-check green is necessary but not sufficient. Test pass rate against synthetic test suites is necessary but not sufficient. The tooling has to know the runtime semantics of the libraries the code is using, not just the type signatures.
+## The bet I'm making
 
-`detectLibraryMigrations(workspaceRoot, registry?)` is exported as a public API in tsfix v0.6.0 — extend the registry with your own breaking-change hints. Pull requests welcome.
+The next moat in LLM coding tools is not on the model side. The frontier-model gap has narrowed to weeks at best; everyone codes against the same three providers. The moat is on the **structured-knowledge side** — the layer that injects the things a model trained on five years of mixed-version code cannot reliably know: which libraries broke, in which versions, with which migration. Library-migration registries are one form. Framework-version-aware refactoring is another. Security-pattern recognition is a third.
 
-Try it: `npx @shipispec/tsfix --workspace . --llm`. The CLI reads `package.json`, injects hints when they apply, and you can opt out with `--no-library-hints`.
+These are unsexy databases of "this is wrong now, do that instead," extended one entry at a time by humans who hit the failure mode and submitted a fix. The first project to ship a registry serious enough to embed into Cursor / Claude Code / Continue.dev / Cline as a sub-component wins the **post-generation correctness** category. That's the integration that touches every one of those tools' users, every codegen pass, every day. It compounds: every new library entry makes your tool relatively more useful versus every alternative.
 
-The svgr case is one of four shipping in the built-in registry today. Send PRs for more.
+We've open-sourced our registry under MIT. It currently knows about `vite-plugin-svgr` v4, `next` v15, the Vercel AI SDK v3, and `drizzle-orm`. Four entries is a starting line, not a finish line. The interesting thing is that adding the fifth, sixth, and hundredth entries is *exactly* the kind of contribution this codebase is structured to receive — see `src/libraryMigrations.ts`, the registry-extension guide in `CONTRIBUTING.md`, and the pinned discussion *"Which library should the migration registry cover next?"*
+
+## Try it
+
+```bash
+npx @shipispec/tsfix --workspace . --llm
+```
+
+On the first run, Layer 0/1 clears the trivial errors deterministically (typos, missing imports — no LLM, no network, no cost). Layer 2 takes whatever's left, with library hints firing automatically when one of the four currently-registered packages is in your `package.json`. You'll see a per-error tally, per-iteration token / cost numbers, and either `stopReason=fixed` or a list of remaining errors. Layer 0/1 by itself needs no API key. Layer 2 needs `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GOOGLE_GENERATIVE_AI_API_KEY` — your choice via `--llm-provider`.
+
+If your stack hits one of the patterns above and tsfix doesn't yet know about it, the registry-suggestion issue template is the fastest path to making sure no one else in your category hits it again.
 
 ---
 
@@ -98,6 +105,6 @@ The svgr case is one of four shipping in the built-in registry today. Send PRs f
 
 - npm: <https://www.npmjs.com/package/@shipispec/tsfix>
 - Source: <https://github.com/owgreen-dev/tsfix>
-- CHANGELOG (v0.6.0): <https://github.com/owgreen-dev/tsfix/blob/main/CHANGELOG.md>
-
-*Word count: ~720. Aim was ~600; trimmed gently.*
+- CHANGELOG: <https://github.com/owgreen-dev/tsfix/blob/main/CHANGELOG.md>
+- Library-migration registry: <https://github.com/owgreen-dev/tsfix/blob/main/src/libraryMigrations.ts>
+- "Which library next?" discussion: <https://github.com/owgreen-dev/tsfix/discussions>
