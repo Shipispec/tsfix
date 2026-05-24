@@ -1,8 +1,8 @@
 # tsfix — Architecture
 
-> Companion to `README.md` (orientation), `STATUS.md` (current state), `CLAUDE.md` (working principles). Design rationale; last reviewed 2026-05-22 (v0.6.1). The package was originally prototyped as "TSC Defense Stack" before being extracted and published as `@shipispec/tsfix` — some history below still uses that name.
+> Companion to `README.md` (orientation), `docs/internal/STATUS.md` (current state), `.claude/CLAUDE.md` (working principles). Design rationale; last reviewed 2026-05-22 (v0.6.1). The package was originally prototyped as "TSC Defense Stack" before being extracted and published as `@shipispec/tsfix` — some history below still uses that name.
 
-This doc explains *why* the package is shaped the way it is. If you only need to use the API, read `README.md`. If you only need to know what's working/broken, read `STATUS.md`. Read this when you're about to add a layer, change the trust model, or wonder why something seems indirect.
+This doc explains *why* the package is shaped the way it is. If you only need to use the API, read `README.md`. If you only need to know what's working/broken, read `docs/internal/STATUS.md`. Read this when you're about to add a layer, change the trust model, or wonder why something seems indirect.
 
 ---
 
@@ -342,4 +342,4 @@ Things we haven't decided, in rough order of how much they'd change the package:
 
 5. **Should the persist-to-disk step be transactional?** Today we write each edited file independently with `writeFileSync`. A power loss mid-pass could leave half-edited workspaces. Probably fine for our threat model (LLM-iteration scratchpads, not production code) but worth flagging if the package is ever used in higher-stakes contexts.
 
-6. **Should the package emit structured per-layer events?** Per `STATUS.md`'s telemetry gap. The shape would be `{layer, errorCode, fixed, latencyMs}`; the open question is delivery — return as part of the result, emit as a Node `EventEmitter`, write to a log file, or all three. Lean toward "return as part of result" for consistency with the current API style.
+6. **Should the package emit structured per-layer events?** Per `docs/internal/STATUS.md`'s telemetry gap. The shape would be `{layer, errorCode, fixed, latencyMs}`; the open question is delivery — return as part of the result, emit as a Node `EventEmitter`, write to a log file, or all three. Lean toward "return as part of result" for consistency with the current API style.

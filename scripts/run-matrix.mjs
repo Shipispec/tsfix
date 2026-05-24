@@ -26,7 +26,7 @@ import { tmpdir } from "node:os";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
-const matrixDir = resolve(root, "test-matrix");
+const matrixDir = resolve(here, "test-matrix");
 const tmpRoot = join(tmpdir(), "tsfix-matrix");
 
 function log(...args) {

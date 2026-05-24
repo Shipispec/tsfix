@@ -50,7 +50,7 @@ import { mutate as mutateTS2365 } from "./lib/mutators/ts2365-operator-mismatch.
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const seedsDir = path.join(root, "seeds");
+const seedsDir = path.join(__dirname, "seeds");
 const fixturesDir = path.join(root, "fixtures");
 // Live OUTSIDE the project's node_modules — tsfix's runInProcessTsc filters
 // out diagnostics from any path containing `node_modules`, so a shared

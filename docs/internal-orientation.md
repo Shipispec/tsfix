@@ -3,10 +3,10 @@
 Standalone npm package implementing **Layers 0–1** of the TypeScript error-recovery stack: in-process tsc validation + deterministic LSP auto-fix. Layers 2–4 (LLM mend) currently live in `spectoship2/src/pipeline/` and will move to a sister package `@shipispec/tsmend` per the roadmap.
 
 Read first:
-- `STATUS.md` — what's working, what's planned, current gaps
+- `internal/STATUS.md` — what's working, what's planned, current gaps
 - `ARCHITECTURE.md` — why the package is shaped the way it is
 - `tsc-defense-roadmap.md` — phased plan with open decisions
-- `CLAUDE.md` — working principles (small allowlist, fixture-pinned trust model)
+- `../.claude/CLAUDE.md` — working principles (small allowlist, fixture-pinned trust model)
 
 ---
 
@@ -70,7 +70,7 @@ Per `ARCHITECTURE.md`, a TSC error has up to four chances to die before reaching
 
 ## What to read first
 
-1. **`STATUS.md`** — current state, fixture catalog, recent fixes
+1. **`internal/STATUS.md`** — current state, fixture catalog, recent fixes
 2. **`ARCHITECTURE.md`** — why the package is shaped the way it is (12 sections)
 3. **`tsc-defense-roadmap.md`** — phased plan with open decisions
 4. **`src/index.ts`** — public API entry point (`runValidationLoop`)
@@ -137,7 +137,7 @@ npm run benchmark -- --fixture synthetic-typo-ts2552    # one fixture
 
 ### Current baseline
 
-**14/14 synthetic fixtures pass. LSP fixer auto-resolves 14/25 errors (56%).** The remaining errors are intentional non-fixes — TS7006 implicit-any, TS2741 missing prop, API-drift errors that need the mend layer. See `STATUS.md` § Fixture catalog for the full list.
+**14/14 synthetic fixtures pass. LSP fixer auto-resolves 14/25 errors (56%).** The remaining errors are intentional non-fixes — TS7006 implicit-any, TS2741 missing prop, API-drift errors that need the mend layer. See `internal/STATUS.md` § Fixture catalog for the full list.
 
 ### Capturing real-failure fixtures
 
