@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Question / discussion / "is X possible?"
-    url: https://github.com/owgreen-dev/tsfix/discussions
+    url: https://github.com/shipispec/tsfix/discussions
     about: Open-ended questions and design conversations belong in Discussions, not Issues.
   - name: Security disclosure
-    url: https://github.com/owgreen-dev/tsfix/security/advisories/new
+    url: https://github.com/shipispec/tsfix/security/advisories/new
     about: Privately report a security vulnerability via GitHub's coordinated disclosure flow. See SECURITY.md for the full policy.

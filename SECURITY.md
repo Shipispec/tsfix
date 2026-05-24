@@ -13,7 +13,7 @@ There is no LTS branch.
 
 ## Reporting a vulnerability
 
-Please use **GitHub's private security-advisory flow**: <https://github.com/owgreen-dev/tsfix/security/advisories/new>
+Please use **GitHub's private security-advisory flow**: <https://github.com/shipispec/tsfix/security/advisories/new>
 
 That gives us a private channel to triage and patch before disclosure. **Do not open a public issue or PR with a vulnerability report** — public disclosure before a fix is shipped puts every user at risk.
 

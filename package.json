@@ -19,13 +19,13 @@
 	],
 	"license": "MIT",
 	"author": "owgreen-dev <ogreenowow@gmail.com>",
-	"homepage": "https://github.com/owgreen-dev/tsfix#readme",
+	"homepage": "https://github.com/shipispec/tsfix#readme",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/owgreen-dev/tsfix.git"
+		"url": "git+https://github.com/shipispec/tsfix.git"
 	},
 	"bugs": {
-		"url": "https://github.com/owgreen-dev/tsfix/issues"
+		"url": "https://github.com/shipispec/tsfix/issues"
 	},
 	"engines": {
 		"node": ">=20.9.0"

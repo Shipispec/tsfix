@@ -25,7 +25,7 @@ import Logo from "./logo.svg";
 
 The fixed file type-checks. The app is broken. `Logo` is now the asset URL string, not a React component, so `<Logo />` blows up with "Logo is not a function" the moment the page renders.
 
-This is the gap LLM-driven code repair walks into every day, and the gap [tsfix](https://github.com/owgreen-dev/tsfix) is built around.
+This is the gap LLM-driven code repair walks into every day, and the gap [tsfix](https://github.com/shipispec/tsfix) is built around.
 
 ## The three characters
 
@@ -92,7 +92,7 @@ The next moat in LLM coding tools is not on the model side. The frontier-model g
 
 These are unsexy databases of "this is wrong now, do that instead," extended one entry at a time by humans who hit the failure mode and submitted a fix. The first project to ship a registry serious enough to embed into Cursor / Claude Code / Continue.dev / Cline as a sub-component wins the **post-generation correctness** category. That's the integration that touches every one of those tools' users, every codegen pass, every day. It compounds: every new library entry makes your tool relatively more useful versus every alternative.
 
-We've open-sourced our registry under MIT. It currently knows about `vite-plugin-svgr` v4, `next` v15, the Vercel AI SDK v3, and `drizzle-orm`. Four entries is a starting line, not a finish line. The interesting thing is that adding the fifth, sixth, and hundredth entries is *exactly* the kind of contribution this codebase is structured to receive — see [`src/libraryMigrations.ts`](https://github.com/owgreen-dev/tsfix/blob/main/src/libraryMigrations.ts), the [registry-extension guide in CONTRIBUTING.md](https://github.com/owgreen-dev/tsfix/blob/main/CONTRIBUTING.md), and the pinned discussion *["Which library should the migration registry cover next?"](https://github.com/owgreen-dev/tsfix/discussions)*
+We've open-sourced our registry under MIT. It currently knows about `vite-plugin-svgr` v4, `next` v15, the Vercel AI SDK v3, and `drizzle-orm`. Four entries is a starting line, not a finish line. The interesting thing is that adding the fifth, sixth, and hundredth entries is *exactly* the kind of contribution this codebase is structured to receive — see [`src/libraryMigrations.ts`](https://github.com/shipispec/tsfix/blob/main/src/libraryMigrations.ts), the [registry-extension guide in CONTRIBUTING.md](https://github.com/shipispec/tsfix/blob/main/CONTRIBUTING.md), and the pinned discussion *["Which library should the migration registry cover next?"](https://github.com/shipispec/tsfix/discussions)*
 
 ## Try it
 
@@ -109,6 +109,6 @@ If your stack hits one of the patterns above and tsfix doesn't yet know about it
 **Links**
 
 - npm: [@shipispec/tsfix](https://www.npmjs.com/package/@shipispec/tsfix)
-- Source: [github.com/owgreen-dev/tsfix](https://github.com/owgreen-dev/tsfix)
-- Library-migration registry: [src/libraryMigrations.ts](https://github.com/owgreen-dev/tsfix/blob/main/src/libraryMigrations.ts)
-- "Which library next?" discussion: [github.com/owgreen-dev/tsfix/discussions](https://github.com/owgreen-dev/tsfix/discussions)
+- Source: [github.com/shipispec/tsfix](https://github.com/shipispec/tsfix)
+- Library-migration registry: [src/libraryMigrations.ts](https://github.com/shipispec/tsfix/blob/main/src/libraryMigrations.ts)
+- "Which library next?" discussion: [github.com/shipispec/tsfix/discussions](https://github.com/shipispec/tsfix/discussions)

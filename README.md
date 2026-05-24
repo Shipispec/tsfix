@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@shipispec/tsfix.svg)](https://www.npmjs.com/package/@shipispec/tsfix)
 [![npm downloads](https://img.shields.io/npm/dm/@shipispec/tsfix.svg)](https://www.npmjs.com/package/@shipispec/tsfix)
-[![CI](https://img.shields.io/github/actions/workflow/status/owgreen-dev/tsfix/test.yml?branch=main&label=CI)](https://github.com/owgreen-dev/tsfix/actions/workflows/test.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/shipispec/tsfix/test.yml?branch=main&label=CI)](https://github.com/shipispec/tsfix/actions/workflows/test.yml)
 [![license MIT](https://img.shields.io/npm/l/@shipispec/tsfix.svg)](LICENSE)
 [![node >= 20.9](https://img.shields.io/node/v/@shipispec/tsfix.svg)](https://nodejs.org/)
 
@@ -371,7 +371,7 @@ run: npm install --save-dev typescript
 tsfix is plain TypeScript bundled with esbuild — no special toolchain.
 
 ```bash
-git clone https://github.com/owgreen-dev/tsfix
+git clone https://github.com/shipispec/tsfix
 cd tsfix
 npm install
 

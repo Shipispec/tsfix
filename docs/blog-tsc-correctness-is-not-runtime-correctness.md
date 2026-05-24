@@ -104,7 +104,7 @@ If your stack hits one of the patterns above and tsfix doesn't yet know about it
 **Links**
 
 - npm: <https://www.npmjs.com/package/@shipispec/tsfix>
-- Source: <https://github.com/owgreen-dev/tsfix>
-- CHANGELOG: <https://github.com/owgreen-dev/tsfix/blob/main/CHANGELOG.md>
-- Library-migration registry: <https://github.com/owgreen-dev/tsfix/blob/main/src/libraryMigrations.ts>
-- "Which library next?" discussion: <https://github.com/owgreen-dev/tsfix/discussions>
+- Source: <https://github.com/shipispec/tsfix>
+- CHANGELOG: <https://github.com/shipispec/tsfix/blob/main/CHANGELOG.md>
+- Library-migration registry: <https://github.com/shipispec/tsfix/blob/main/src/libraryMigrations.ts>
+- "Which library next?" discussion: <https://github.com/shipispec/tsfix/discussions>

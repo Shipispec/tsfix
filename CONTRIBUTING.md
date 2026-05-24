@@ -7,7 +7,7 @@ Thanks for helping. tsfix is MIT-licensed and BYOK — no proprietary core, no p
 tsfix is plain TypeScript bundled with esbuild. No special toolchain.
 
 ```bash
-git clone https://github.com/owgreen-dev/tsfix
+git clone https://github.com/shipispec/tsfix
 cd tsfix
 npm install
 ```

@@ -234,7 +234,7 @@ Phase 2 contract release. **Establishes the public types `MendContext`, `LayerEv
 - **GitHub Actions CI** (`.github/workflows/test.yml`) — runs check-types, vitest, benchmark, and the matrix on every PR + main push.
 
 ### Changed
-- **Repository moved.** `tsc-defense-stack/` was extracted from the `spectoship-meta` monorepo into its own repository at <https://github.com/owgreen-dev/tsfix>. All `repository.url`, `homepage`, `bugs.url` fields point at the new repo. Internal git history pre-2026-05-06 lives in the original monorepo; the CHANGELOG narrates v0.1.0–v0.2.0 in detail.
+- **Repository moved.** `tsc-defense-stack/` was extracted from the `spectoship-meta` monorepo into its own repository at <https://github.com/shipispec/tsfix>. All `repository.url`, `homepage`, `bugs.url` fields point at the new repo. Internal git history pre-2026-05-06 lives in the original monorepo; the CHANGELOG narrates v0.1.0–v0.2.0 in detail.
 - **Public README rewritten** for an OSS audience — tagline, before/after, 30-second cold start, four-layer model, library API, trust model, contributing protocol. Previous internal-orientation README preserved at `docs/internal-orientation.md`.
 
 ### Engines
@@ -314,13 +314,13 @@ Initial public release. **Layers 0–1 only** (deterministic detection + auto-fi
 - Node `>=20.9.0` (matches VS Code Extension Host runtime)
 - TypeScript `>=5.0.0` (peer dep, must be installed in the consuming workspace)
 
-[Unreleased]: https://github.com/owgreen-dev/tsfix/compare/v0.6.2...HEAD
-[0.6.2]: https://github.com/owgreen-dev/tsfix/compare/v0.6.1...v0.6.2
-[0.6.1]: https://github.com/owgreen-dev/tsfix/compare/v0.6.0...v0.6.1
-[0.6.0]: https://github.com/owgreen-dev/tsfix/compare/v0.5.0...v0.6.0
-[0.5.0]: https://github.com/owgreen-dev/tsfix/compare/v0.4.0...v0.5.0
-[0.4.0]: https://github.com/owgreen-dev/tsfix/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/owgreen-dev/tsfix/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/owgreen-dev/tsfix/compare/v0.1.1...v0.2.0
-[0.1.1]: https://github.com/owgreen-dev/tsfix/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/owgreen-dev/tsfix/releases/tag/v0.1.0
+[Unreleased]: https://github.com/shipispec/tsfix/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/shipispec/tsfix/compare/v0.6.1...v0.6.2
+[0.6.1]: https://github.com/shipispec/tsfix/compare/v0.6.0...v0.6.1
+[0.6.0]: https://github.com/shipispec/tsfix/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/shipispec/tsfix/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/shipispec/tsfix/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/shipispec/tsfix/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/shipispec/tsfix/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/shipispec/tsfix/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/shipispec/tsfix/releases/tag/v0.1.0
