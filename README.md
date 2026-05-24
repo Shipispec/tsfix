@@ -1,5 +1,11 @@
 # tsfix
 
+[![npm version](https://img.shields.io/npm/v/@shipispec/tsfix.svg)](https://www.npmjs.com/package/@shipispec/tsfix)
+[![npm downloads](https://img.shields.io/npm/dm/@shipispec/tsfix.svg)](https://www.npmjs.com/package/@shipispec/tsfix)
+[![CI](https://img.shields.io/github/actions/workflow/status/owgreen-dev/tsfix/test.yml?branch=main&label=CI)](https://github.com/owgreen-dev/tsfix/actions/workflows/test.yml)
+[![license MIT](https://img.shields.io/npm/l/@shipispec/tsfix.svg)](LICENSE)
+[![node >= 20.9](https://img.shields.io/node/v/@shipispec/tsfix.svg)](https://nodejs.org/)
+
 > **TypeScript error recovery for LLM-generated code.** When Cursor / Claude Code / Copilot / your spec-to-code agent leaves you with a wall of `tsc --noEmit` errors, tsfix repairs them — **library-aware** mend on the hard ones, deterministic VS Code Quick Fix on the trivial ones. **98.6% pass on a real-world single-file bench at <$0.005 per fix.** MIT, BYOK.
 
 ![tsfix demo: broken vite-plugin-svgr import → tsfix --llm → tsc green](docs/demo/demo.gif)
