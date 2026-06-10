@@ -228,3 +228,36 @@ load, so it is not a reliable signal for this change.
 output byte-identical (docs-only change touches no runtime path).
 
 ---
+
+### Task: T-3b-1 - fixtures/REAL.md (real-failure fixture format spec)
+
+**What was implemented:** (no code — docs only; first Phase 3b task)
+- Added `fixtures/REAL.md`: the format spec for `fixtures/real-<timestamp>-<hash>/`
+  fixtures. Covers (1) the directory layout, (2) the `expected.json` schema
+  (cross-referenced to `interface Expected` in `benchmark/run-benchmark.ts` +
+  the provenance/`_hint_*` fields that `scripts/capture-fixture.mjs` emits),
+  (3) the `mustPass` lifecycle (`false` on capture → flip to `true` once a fix
+  ships), and (4) the **node_modules strategy (a)** chosen by ROADMAP 3b:
+  commit broken `.ts(x)` + `package-lock.json` + a `setup.sh` (`npm ci
+  --ignore-scripts`) that materialises a gitignored `node_modules` on demand.
+  Documents the (b)/(c) alternatives and the disk-vs-CI-time tradeoff, plus the
+  capture-script invocation (`--no-shared-deps --commit-locked`).
+
+**Files changed:** `fixtures/REAL.md` (new) (+ `plans/prd.json`, `plans/progress.md`).
+
+**Key facts pinned for downstream 3b tasks (T-3b-2/3):**
+- Benchmark fixture discovery: any dir with both `expected.json` + `tsconfig.json`,
+  excluding `_`-prefixed names; **`costUsdMax`/`expectedErrorCode` markers route a
+  fixture to the paid Layer-2 LLM benchmark** — real fixtures must use neither so
+  they stay on the free `npm run benchmark` gate.
+- Synthetic fixtures symlink `node_modules → ../_shared/node_modules` (one pinned
+  version set for the whole suite); real failures are version-specific so they
+  can't use `_shared` — hence strategy (a)'s per-fixture lockfile.
+- The report-only path for `mustPass:false` fixtures is T-3b-3 (not yet shipped);
+  REAL.md documents the intended lifecycle, flagging that dependency.
+
+**Verification:** `npm run check-types` clean · `npm run test` 151/151 passed
+(14 files; same 2 benign WSL2 RPC-timeout "errors") · `npm run benchmark` 14/14,
+output unchanged (docs-only change touches no runtime path).
+
+---

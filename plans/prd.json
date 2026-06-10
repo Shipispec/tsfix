@@ -53,7 +53,8 @@
       "id": "T-3b-1",
       "title": "fixtures/REAL.md documenting real-failure fixture format + node_modules strategy",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-10",
       "acceptance_criteria": [
         "fixtures/REAL.md exists: real-<timestamp>-<hash>/ layout, expected.json schema, mustPass lifecycle (false then true once fixed)",
         "Documents node_modules strategy option (a): commit broken .ts(x) + package-lock.json + setup.sh (per ROADMAP 3b)",
