@@ -261,3 +261,65 @@ output byte-identical (docs-only change touches no runtime path).
 output unchanged (docs-only change touches no runtime path).
 
 ---
+
+### Task: T-3b-2 - Enhance scripts/capture-fixture.mjs to emit real-failure fixture dirs
+
+**What was implemented:**
+- Rewrote `scripts/capture-fixture.mjs` from a top-to-bottom script into an
+  importable ESM module: pure helpers (`parseArgs`, `listSourceFiles`,
+  `stripPackageJson`, `contentHash`, `formatTimestamp`/`formatDate`,
+  `fixtureDirName`, `buildExpected`) + a `captureFixture(opts)` core + a
+  `main()` guarded by `process.argv[1] === import.meta.url` so importing it in
+  tests has no side effects.
+- **Directory naming** now matches REAL.md: `real-<YYYYMMDD-HHMMSS>-<hash8>`,
+  where the timestamp is UTC capture time and the hash is an 8-char sha256 over
+  the sorted captured source (deterministic per broken workspace). The old
+  `<name>` positional is gone — workspace path is the only positional.
+- **New artifacts** written per fixture: `diagnostics.json` (the broken
+  snapshot's `Diagnostic[]`), and `setup.sh` (`npm ci --ignore-scripts …`,
+  chmod 0755) for the strategy-(a) path. `--shared-deps` instead symlinks
+  `../_shared/node_modules` and skips `setup.sh`.
+- **`expected.json` defaults** changed to the REAL.md lifecycle: `mustPass:false`
+  and `errorsAfterMax: errorsBefore` (lenient/report-only at capture; tighten to
+  0 when flipping `mustPass:true`). Added `_hint_lspFixesApplied` alongside the
+  existing `_hint_remainingBy*` hints.
+- **Diagnostics source** switched from "build dist + spawn the CLI + parse its
+  `--json` report" to "build dist + `import()` `dist/index.js` +
+  `runValidationLoop({dryRun:true})`". The dry-run loop returns the broken
+  (before-fix) `Diagnostic[]`, `errorsBefore`, and the would-be Layer-0/1 fix
+  count in one in-process call — no CLI schema change needed. This is
+  `defaultGatherDiagnostics`, injectable via `captureFixture({gatherDiagnostics})`.
+
+**Files changed:**
+- `scripts/capture-fixture.mjs` (rewritten)
+- `scripts/capture-fixture.test.ts` (new — smoke/unit test, 7 cases)
+- `fixtures/REAL.md` (consistency: added `diagnostics.json` to the layout, fixed
+  the capture invocation to drop the `<name>` positional)
+
+**Smoke test design (why it's fast + deterministic):** the test imports
+`captureFixture` directly and drives it with (1) an injected `gatherDiagnostics`
+returning canned diagnostics — so no dist build / TypeScript load — and (2) a
+fixed `now` clock + a temp `fixturesRoot`. It builds a sample broken workspace
+in `os.tmpdir()` and asserts the dir name pattern, all required artifacts,
+`mustPass:false`, the `Diagnostic[]` snapshot, `setup.sh` contents + exec bit,
+strategy-(a) (no committed `node_modules`), the `--shared-deps` symlink branch,
+and the no-tsconfig rejection. **Crucially the test writes only to temp dirs,
+never under `fixtures/`, so benchmark discovery is unaffected.**
+
+**Key facts pinned for T-3b-3:**
+- A captured fixture is `mustPass:false` with `errorsAfterMax:errorsBefore`. The
+  current `run-benchmark.ts` still treats `errorsBefore`/`lspFixesApplied*`
+  mismatches as hard `failureReasons` regardless of `mustPass` — T-3b-3 is what
+  makes `mustPass:false` truly report-only (non-blocking). No real-* fixture was
+  committed in this task (that seed fixture is T-3b-3's deliverable), so the gate
+  is untouched.
+- `scripts/**` is **excluded** from `tsconfig.json` (`include` is src/cli/
+  benchmark only), so `check-types` does not typecheck the new `.test.ts` — but
+  vitest's own discovery (`**/*.test.ts`) still runs it. That's why the test can
+  import a `.mjs` without a declaration file and not break `tsc --noEmit`.
+
+**Verification:** `npm run check-types` clean · `npm run test` 158/158 passed
+(15 files; +1 file/+7 tests; same 3 benign WSL2 RPC-timeout "errors") ·
+`npm run benchmark` 14/14, default output unchanged.
+
+---

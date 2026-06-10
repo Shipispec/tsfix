@@ -19,6 +19,7 @@ and a short hash of its contents, so two captures of the same bug never collide:
 ```
 fixtures/real-<timestamp>-<hash>/
 ├── expected.json          # the contract (schema below) — REQUIRED
+├── diagnostics.json       # the broken snapshot's Diagnostic[] (triage aid)
 ├── tsconfig.json          # the workspace's tsconfig at capture time — REQUIRED
 ├── package.json           # deps only (scripts + devDeps stripped) — REQUIRED
 ├── package-lock.json      # pinned dep tree (node_modules strategy (a)) — REQUIRED
@@ -27,6 +28,11 @@ fixtures/real-<timestamp>-<hash>/
 ├── <broken source>.ts(x)  # the snapshotted broken files, dir structure preserved
 └── node_modules/          # NOT committed — produced by setup.sh (gitignored)
 ```
+
+`diagnostics.json` is the `Diagnostic[]` (`{file,line,column,code,message,category}`)
+captured from the broken workspace at snapshot time. The benchmark harness
+ignores it (it reads only `expected.json` + `tsconfig.json`); it exists so a
+human triaging the fixture can see the exact errors without re-running tsc.
 
 - `<timestamp>` is `YYYYMMDD-HHMMSS` (UTC) from capture time.
 - `<hash>` is a short (8-char) content hash of the captured source files, so the
@@ -150,18 +156,23 @@ Use `scripts/capture-fixture.mjs` (see its `--help`). For strategy (a), capture
 with the lockfile committed and shared deps off:
 
 ```sh
-node scripts/capture-fixture.mjs <name> <broken-workspace-path> \
+node scripts/capture-fixture.mjs <broken-workspace-path> \
   --no-shared-deps --commit-locked \
   --description "what this bug is and why Layer 0/1 missed it"
 ```
 
-This writes the skeleton: `tsconfig.json`, stripped `package.json`, the broken
-source files, `package-lock.json`, and an auto-generated `expected.json` with
-`mustPass` defaulted from the dry-run baseline. Then:
+The fixture directory name (`real-<timestamp>-<hash>`) is derived
+automatically — `<timestamp>` from capture time (UTC), `<hash>` from a content
+hash of the captured source. This writes the skeleton: `tsconfig.json`, stripped
+`package.json`, the broken source files, `package-lock.json`, `setup.sh`, a
+`diagnostics.json` snapshot, and an auto-generated `expected.json`
+(`mustPass:false`, `errorsAfterMax` left lenient at the captured `errorsBefore`).
+Then:
 
-1. Review `expected.json` — refine `description`, confirm `mustPass:false`,
+1. Review `expected.json` — refine `description`, keep `mustPass:false`,
    remove the `_hint_*` fields once you've used them.
-2. Add `setup.sh` (above) and confirm `node_modules/` is gitignored.
-3. Run `npm run benchmark -- --fixture real-<name>` to confirm it loads and
-   reports.
+2. The capture writes `setup.sh` for you (strategy (a)); `node_modules/` is
+   gitignored by the repo-root `.gitignore`.
+3. Run `./fixtures/real-<timestamp>-<hash>/setup.sh` then
+   `npm run benchmark -- --fixture real-<timestamp>-<hash>` to confirm it loads.
 4. Edit `README.md` to explain the pattern.

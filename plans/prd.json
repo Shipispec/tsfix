@@ -66,7 +66,8 @@
       "id": "T-3b-2",
       "title": "Enhance scripts/capture-fixture.mjs to emit real-failure fixture dirs",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-10",
       "acceptance_criteria": [
         "capture-fixture.mjs writes fixtures/real-<timestamp>-<hash>/ with broken files, Diagnostic[] snapshot, and expected.json (mustPass:false default) + setup.sh",
         "A smoke/unit test exercises the capture flow on a sample broken workspace",
