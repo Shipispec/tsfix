@@ -84,9 +84,12 @@ A real fixture's whole point is to start *red* and turn *green* when fixed:
 
 1. **Capture → `mustPass: false`.** A new failure mode that Layer 0/1 cannot yet
    fix. It is committed report-only: the benchmark *runs* it and reports the
-   outcome, but a non-passing `mustPass:false` fixture does **not** fail the run
-   or CI. This lets production-captured failures live in-tree as a backlog
-   without blocking the gate. (The report-only path is implemented in T-3b-3.)
+   outcome under a dedicated "Report-only (mustPass:false — tracked, non-gating)"
+   section, but a non-passing `mustPass:false` fixture does **not** fail the run
+   or CI (only the `mustPass:true` *gate* set drives the exit code). This lets
+   production-captured failures live in-tree as a backlog without blocking the
+   gate. (Implemented in T-3b-3; see `allGatingPassed` in
+   `benchmark/run-benchmark.ts`.)
 2. **A fix ships** (a new safe code, a fixer improvement, a Layer-2 rule).
 3. **Flip → `mustPass: true`** and set `errorsAfterMax: 0` (and tighten
    `lspFixesAppliedMin` if the fix is a Layer-1 fix). From here the fixture is a

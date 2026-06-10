@@ -1,0 +1,9 @@
+{
+	"description": "Real-failure seed: formatTotal declared :number but returns a string (TS2322). No safe quick-fix; Layer 0/1 abstain. Report-only until a fix ships.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"source": "seed (hand-authored to exercise the report-only path, T-3b-3)",
+	"capturedAt": "2026-06-10"
+}

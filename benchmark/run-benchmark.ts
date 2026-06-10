@@ -31,7 +31,7 @@ interface Expected {
 	expectedFixerCodes?: string[];
 }
 
-interface FixtureResult {
+export interface FixtureResult {
 	name: string;
 	expected: Expected;
 	errorsBefore: number;
@@ -41,6 +41,12 @@ interface FixtureResult {
 	filesEdited: string[];
 	remainingByCode: Record<string, number>;
 	passed: boolean;
+	/**
+	 * Report-only fixtures (`expected.mustPass === false`) are run and reported
+	 * but never gate the run/CI exit code (T-3b-3). A captured real-failure lives
+	 * in-tree as `mustPass:false` until a fix ships, then flips to `true`.
+	 */
+	reportOnly: boolean;
 	failureReasons: string[];
 	elapsedMs: number;
 	/** Per-span perf breakdown (ms / counts). Populated only with `--perf`. */
@@ -57,7 +63,7 @@ const SCRIPT_DIR =
 		: path.dirname(new URL(import.meta.url).pathname);
 const FIXTURES_ROOT = path.resolve(SCRIPT_DIR, "..", "fixtures");
 
-function listFixtures(filter?: string): string[] {
+export function listFixtures(filter?: string): string[] {
 	const entries = fs.readdirSync(FIXTURES_ROOT, { withFileTypes: true });
 	const out: string[] = [];
 	for (const e of entries) {
@@ -113,7 +119,7 @@ function silentLogger() {
 	};
 }
 
-function runFixture(name: string, perf: boolean): FixtureResult {
+export function runFixture(name: string, perf: boolean): FixtureResult {
 	const dir = path.join(FIXTURES_ROOT, name);
 	const expected = readExpected(dir);
 	const files = discoverTsFiles(dir);
@@ -157,8 +163,16 @@ function runFixture(name: string, perf: boolean): FixtureResult {
 		);
 	}
 
-	const passed =
-		failureReasons.length === 0 && (!expected.mustPass || loop.errorsAfter === 0);
+	if (expected.mustPass && loop.errorsAfter > 0) {
+		failureReasons.push("mustPass=true but errorsAfter>0");
+	}
+
+	// `passed` reflects whether the fixture met its full contract (used for the
+	// ✓/✗ marker and the gating aggregate). `reportOnly` fixtures are evaluated
+	// the same way for reporting, but they never contribute to the exit code —
+	// see `allGatingPassed` / `main`.
+	const reportOnly = !expected.mustPass;
+	const passed = failureReasons.length === 0 && (reportOnly || loop.errorsAfter === 0);
 
 	return {
 		name,
@@ -170,9 +184,8 @@ function runFixture(name: string, perf: boolean): FixtureResult {
 		filesEdited: loop.lspFixer.filesEdited,
 		remainingByCode: loop.remainingByCode,
 		passed,
-		failureReasons: failureReasons.concat(
-			expected.mustPass && loop.errorsAfter > 0 ? ["mustPass=true but errorsAfter>0"] : [],
-		),
+		reportOnly,
+		failureReasons,
 		elapsedMs: loop.elapsedMs,
 		perf: perfMarks,
 	};
@@ -191,16 +204,34 @@ function parseArgs(argv: string[]): { fixture?: string; json: boolean; perf: boo
 
 function printHumanReport(results: FixtureResult[]): void {
 	const w = process.stderr;
+	const gating = results.filter((r) => !r.reportOnly);
+	const reportOnly = results.filter((r) => r.reportOnly);
 	w.write(`\ntsfix benchmark — ${results.length} fixture(s)\n\n`);
 
 	const nameWidth = Math.max(...results.map((r) => r.name.length), 12);
-	for (const r of results) {
-		const status = r.passed ? "✓" : "✗";
+	const writeRow = (r: FixtureResult, status: string): void => {
 		const name = r.name.padEnd(nameWidth);
 		const transition = `${String(r.errorsBefore).padStart(3)} errors → ${String(r.errorsAfter).padStart(3)} errors`;
 		const lsp = r.lspFixesApplied > 0 ? ` (LSP fixed ${r.lspFixesApplied})` : "";
 		w.write(`  ${status} ${name}  ${transition}${lsp}\n`);
+	};
+	for (const r of gating) {
+		const status = r.passed ? "✓" : "✗";
+		writeRow(r, status);
 		if (!r.passed) {
+			for (const reason of r.failureReasons) {
+				w.write(`      └─ ${reason}\n`);
+			}
+		}
+	}
+
+	// Report-only (mustPass:false) fixtures: shown with a distinct marker and
+	// never counted in the gating pass/fail tally. A non-passing one is expected
+	// (a captured-but-unfixed failure) and does NOT fail the run.
+	if (reportOnly.length > 0) {
+		w.write(`\nReport-only (mustPass:false — tracked, non-gating):\n`);
+		for (const r of reportOnly) {
+			writeRow(r, r.passed ? "○" : "·");
 			for (const reason of r.failureReasons) {
 				w.write(`      └─ ${reason}\n`);
 			}
@@ -210,10 +241,21 @@ function printHumanReport(results: FixtureResult[]): void {
 	const totalBefore = results.reduce((sum, r) => sum + r.errorsBefore, 0);
 	const totalLspFixed = results.reduce((sum, r) => sum + r.lspFixesApplied, 0);
 	const totalAfter = results.reduce((sum, r) => sum + r.errorsAfter, 0);
-	const passed = results.filter((r) => r.passed).length;
+	const gatePassed = gating.filter((r) => r.passed).length;
+	const reportOnlyMet = reportOnly.filter((r) => r.passed).length;
+	const metContract = results.filter((r) => r.passed).length;
 
 	w.write(`\nAggregate:\n`);
-	w.write(`  fixtures:        ${passed}/${results.length} passed\n`);
+	// `gate` is the only number that affects the exit code (mustPass:true set).
+	// `fixtures` is the overall contract-met tally (kept for continuity with the
+	// historical headline); report-only failures lower it but never fail the run.
+	w.write(`  gate:            ${gatePassed}/${gating.length} mustPass:true passed\n`);
+	if (reportOnly.length > 0) {
+		w.write(
+			`  report-only:     ${reportOnlyMet}/${reportOnly.length} met contract (mustPass:false; non-gating)\n`,
+		);
+	}
+	w.write(`  fixtures:        ${metContract}/${results.length} met contract\n`);
 	w.write(`  errors:          ${totalBefore} before → ${totalAfter} after\n`);
 	if (totalBefore > 0) {
 		const pct = ((totalLspFixed / totalBefore) * 100).toFixed(1);
@@ -297,6 +339,7 @@ async function main(): Promise<number> {
 				filesEdited: [],
 				remainingByCode: {},
 				passed: false,
+				reportOnly: false,
 				failureReasons: [`harness error: ${err instanceof Error ? err.message : String(err)}`],
 				elapsedMs: 0,
 			});
@@ -310,14 +353,33 @@ async function main(): Promise<number> {
 		if (args.perf) printPerfReport(results);
 	}
 
-	const allPassed = results.every((r) => r.passed);
-	return allPassed ? 0 : 1;
+	return allGatingPassed(results) ? 0 : 1;
 }
 
-main().then(
-	(code) => process.exit(code),
-	(err) => {
-		console.error("benchmark error:", err instanceof Error ? err.stack : err);
-		process.exit(2);
-	},
-);
+/**
+ * Exit-code gate: only `mustPass:true` fixtures count. Report-only
+ * (`mustPass:false`) fixtures are reported but never fail the run/CI (T-3b-3).
+ */
+export function allGatingPassed(results: FixtureResult[]): boolean {
+	return results.filter((r) => !r.reportOnly).every((r) => r.passed);
+}
+
+// Run as a CLI, but stay importable from tests without triggering process.exit.
+const invokedDirectly = (() => {
+	try {
+		const entry = process.argv[1] ? path.resolve(process.argv[1]) : "";
+		return entry.endsWith("run-benchmark.ts") || entry.endsWith("run-benchmark.js");
+	} catch {
+		return false;
+	}
+})();
+
+if (invokedDirectly) {
+	main().then(
+		(code) => process.exit(code),
+		(err) => {
+			console.error("benchmark error:", err instanceof Error ? err.stack : err);
+			process.exit(2);
+		},
+	);
+}

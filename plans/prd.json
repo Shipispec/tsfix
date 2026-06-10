@@ -79,7 +79,8 @@
       "id": "T-3b-3",
       "title": "Benchmark harness treats mustPass:false fixtures as report-only (non-blocking)",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-10",
       "acceptance_criteria": [
         "benchmark/run-benchmark.ts reads expected.json mustPass; mustPass:false fixtures are reported but do not fail the run/CI",
         "Add/convert one seed real-* fixture (mustPass:false) to validate the report-only path end-to-end",

@@ -323,3 +323,61 @@ never under `fixtures/`, so benchmark discovery is unaffected.**
 `npm run benchmark` 14/14, default output unchanged.
 
 ---
+
+### Task: T-3b-3 - Benchmark treats mustPass:false fixtures as report-only
+
+**What was implemented:**
+- `benchmark/run-benchmark.ts`: added a `reportOnly` flag (`= !expected.mustPass`)
+  to `FixtureResult`. The exit-code gate now runs through a new exported
+  `allGatingPassed(results)` that filters to `mustPass:true` fixtures only — so a
+  failing `mustPass:false` fixture is *reported* but never fails the run/CI.
+- Report layout: gating (`mustPass:true`) fixtures keep the `✓/✗` list; a
+  dedicated **"Report-only (mustPass:false — tracked, non-gating)"** section lists
+  the rest (`○` met its lenient contract, `·` still open) with their reasons.
+- Aggregate now prints three numbers so the historical headline is preserved
+  while the gate is explicit: `gate: N/M mustPass:true passed` (the only number
+  that drives the exit code), `report-only: K/L met contract`, and
+  `fixtures: X/Y met contract` (overall).
+- Made the harness importable: exported `runFixture` / `listFixtures` /
+  `FixtureResult` / `allGatingPassed` and guarded the CLI `main()` behind an
+  `invokedDirectly` check (`process.argv[1]` ends with `run-benchmark.{ts,js}`),
+  so a vitest test can import it without triggering `process.exit`.
+- Added seed fixture `fixtures/real-20260610-000000-9157284c/`: a hand-authored
+  `real-*` whose `formatTotal(): number` returns a string (TS2322, no safe
+  quick-fix → Layer 0/1 abstain → stays red). `expected.json` is `mustPass:false`
+  with `errorsAfterMax:0`, so it is genuinely *red* yet non-gating — exercising
+  the report-only path end-to-end. Stdlib-only (no deps), so it runs
+  deterministically in the free gate with no `setup.sh`. Ships `tsconfig.json`,
+  `diagnostics.json`, and a `README.md` per `fixtures/REAL.md`.
+- Added `benchmark/run-benchmark.test.ts` (5 tests): `allGatingPassed` ignores
+  report-only failures, still fails on a gating failure, passes when all are
+  report-only; plus a live `runFixture` on the seed asserting `reportOnly`,
+  `mustPass:false`, `errorsAfter>0`, and that it doesn't fail the gate.
+
+**Files changed:** `benchmark/run-benchmark.ts`, `benchmark/run-benchmark.test.ts`
+(new), `fixtures/real-20260610-000000-9157284c/*` (new), `fixtures/REAL.md`
+(struck the "not yet shipped" note).
+
+**Key correction / learning — the "14/14" was 7 gate + 7 lenient-false:**
+The pre-T-3b-3 "14/14 passed" headline conflated two categories. Of the 14
+discovered fixtures, only **7 are `mustPass:true`** (clean-baseline,
+import-rename, missing-import, multifile-ripple, no-exported-member,
+property-typo, typo-ts2552 — all driven to 0 errors). The other **7 are already
+`mustPass:false`** (the 4 `api-drift-*` plus `cross-file-typo-ts2305`,
+`implicit-any-ts7006`, `missing-prop-ts2741`) with lenient `errorsAfterMax ==
+errorsBefore`, i.e. known-open patterns Layer 0/1 can't fix. The old logic
+counted them as "passed" because they met that lenient bound. T-3b-3 reclassifies
+them into the report-only bucket where they belong. New headline:
+`gate 7/7 · report-only 7/8 · fixtures 14/15 met contract`, **exit 0**. No
+fixture that previously passed now fails the gate — the "14" is preserved as the
+overall contract-met numerator.
+
+**Verification:** `npm run check-types` clean · `npm run benchmark` exit **0**
+(gate 7/7; the seed is the lone open report-only failure, non-blocking) ·
+`benchmark/run-benchmark.test.ts` 5/5 in isolation · full `npm run test` 161/163
+with 2 spurious "failures" (`run-stack` TS2552 + `runFullStack` Layer-4 stub)
+that **pass standalone** — the recurring WSL2 vitest `onTaskUpdate` RPC timeout
+marks in-flight tests failed under full parallel load (documented benign pattern,
+confirmed by running both files alone: 28/28 pass).
+
+---
