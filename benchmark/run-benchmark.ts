@@ -19,6 +19,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { runValidationLoop, discoverTsFiles } from "../src/index.js";
+import { enablePerf, resetPerf, snapshotPerf } from "../src/perfInstrument.js";
 
 interface Expected {
 	description?: string;
@@ -42,6 +43,8 @@ interface FixtureResult {
 	passed: boolean;
 	failureReasons: string[];
 	elapsedMs: number;
+	/** Per-span perf breakdown (ms / counts). Populated only with `--perf`. */
+	perf?: Record<string, number>;
 }
 
 // tsx loads .ts as CJS when the package.json doesn't declare "type": "module".
@@ -110,18 +113,20 @@ function silentLogger() {
 	};
 }
 
-function runFixture(name: string): FixtureResult {
+function runFixture(name: string, perf: boolean): FixtureResult {
 	const dir = path.join(FIXTURES_ROOT, name);
 	const expected = readExpected(dir);
 	const files = discoverTsFiles(dir);
 	const snap = snapshotFiles(dir, files);
 	const logger = silentLogger();
 
+	if (perf) resetPerf();
 	const loop = runValidationLoop({
 		workspaceRoot: dir,
 		targetFiles: files,
 		logger,
 	});
+	const perfMarks = perf ? snapshotPerf() : undefined;
 
 	// Restore snapshots so the next run sees the original broken code.
 	restoreFiles(snap);
@@ -169,15 +174,17 @@ function runFixture(name: string): FixtureResult {
 			expected.mustPass && loop.errorsAfter > 0 ? ["mustPass=true but errorsAfter>0"] : [],
 		),
 		elapsedMs: loop.elapsedMs,
+		perf: perfMarks,
 	};
 }
 
-function parseArgs(argv: string[]): { fixture?: string; json: boolean } {
-	const out: { fixture?: string; json: boolean } = { json: false };
+function parseArgs(argv: string[]): { fixture?: string; json: boolean; perf: boolean } {
+	const out: { fixture?: string; json: boolean; perf: boolean } = { json: false, perf: false };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		if (a === "--fixture") out.fixture = argv[++i];
 		else if (a === "--json") out.json = true;
+		else if (a === "--perf") out.perf = true;
 	}
 	return out;
 }
@@ -226,8 +233,49 @@ function printHumanReport(results: FixtureResult[]): void {
 	w.write(`\n`);
 }
 
+/**
+ * Per-fixture lib-load timing breakdown (T-3c-1 baseline). Prints the cold
+ * lib-file load cost in Layer 0 (`validatorInProcess`) and Layer 1
+ * (`tsLanguageServiceFixer`), the redundancy the shared-Program refactor
+ * (T-3c-2) targets. Only emitted under `--perf`.
+ */
+function printPerfReport(results: FixtureResult[]): void {
+	const w = process.stderr;
+	const rows = results.filter((r) => r.perf);
+	if (rows.length === 0) return;
+
+	w.write(`\nPerf breakdown (lib-load cost, ms) — --perf\n\n`);
+	const nameWidth = Math.max(...rows.map((r) => r.name.length), 12);
+	w.write(
+		`  ${"fixture".padEnd(nameWidth)}  ${"L0 lib".padStart(7)} ${"L0 prog".padStart(8)} ${"L0×".padStart(3)}  ${"L1 read".padStart(7)} ${"L1 diag".padStart(8)} ${"total".padStart(7)}\n`,
+	);
+	const sum: Record<string, number> = {};
+	for (const r of rows) {
+		const p = r.perf ?? {};
+		for (const [k, v] of Object.entries(p)) sum[k] = (sum[k] ?? 0) + v;
+		const g = (k: string) => Math.round(p[k] ?? 0);
+		w.write(
+			`  ${r.name.padEnd(nameWidth)}  ${String(g("layer0.libLoadMs")).padStart(7)} ${String(g("layer0.createProgramMs")).padStart(8)} ${String(g("layer0.coldCount")).padStart(3)}  ${String(g("layer1.libReadMs")).padStart(7)} ${String(g("layer1.firstDiagnosticsMs")).padStart(8)} ${String(r.elapsedMs).padStart(7)}\n`,
+		);
+	}
+
+	const n = rows.length;
+	const avg = (k: string) => (sum[k] ?? 0) / n;
+	w.write(`\n  Averages over ${n} fixture(s):\n`);
+	w.write(
+		`    Layer 0 cold lib-load (host.getSourceFile): ${avg("layer0.libLoadMs").toFixed(1)} ms  (${(avg("layer0.coldCount")).toFixed(2)} cold createProgram/fixture)\n`,
+	);
+	w.write(`    Layer 0 createProgram total:                ${avg("layer0.createProgramMs").toFixed(1)} ms\n`);
+	w.write(`    Layer 1 cold lib read (getScriptSnapshot):  ${avg("layer1.libReadMs").toFixed(1)} ms\n`);
+	w.write(`    Layer 1 first diagnostics (lib parse):      ${avg("layer1.firstDiagnosticsMs").toFixed(1)} ms\n`);
+	w.write(
+		`    Redundant lib-load/fixture (L0 + L1):       ${(avg("layer0.libLoadMs") + avg("layer1.firstDiagnosticsMs")).toFixed(1)} ms\n\n`,
+	);
+}
+
 async function main(): Promise<number> {
 	const args = parseArgs(process.argv.slice(2));
+	if (args.perf) enablePerf();
 	const fixtures = listFixtures(args.fixture);
 	if (fixtures.length === 0) {
 		console.error(`error: no fixtures found${args.fixture ? ` matching "${args.fixture}"` : ""}`);
@@ -237,7 +285,7 @@ async function main(): Promise<number> {
 	const results: FixtureResult[] = [];
 	for (const name of fixtures) {
 		try {
-			results.push(runFixture(name));
+			results.push(runFixture(name, args.perf));
 		} catch (err) {
 			results.push({
 				name,
@@ -259,6 +307,7 @@ async function main(): Promise<number> {
 		process.stdout.write(JSON.stringify({ fixtures: results }, null, 2) + "\n");
 	} else {
 		printHumanReport(results);
+		if (args.perf) printPerfReport(results);
 	}
 
 	const allPassed = results.every((r) => r.passed);

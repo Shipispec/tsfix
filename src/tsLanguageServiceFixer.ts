@@ -34,6 +34,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
+import { isPerfEnabled, recordPerf, timePerf } from "./perfInstrument.js";
 
 /** TS error codes whose built-in code-fix is safe to apply without human review. */
 const SAFE_FIXABLE_CODES = new Set<number>([
@@ -169,12 +170,21 @@ export function runLSPFixerPass(opts: LSPFixerOptions): LSPFixerResult {
 			if (!fs.existsSync(fileName)) {
 				return undefined;
 			}
+			// Perf (opt-in): time the cold read of lib `.d.ts` files. The parse
+			// cost lands later in the first `getSemanticDiagnostics` pass; see
+			// `layer1.firstDiagnosticsMs` below.
+			const libStart =
+				isPerfEnabled() && /lib\.[a-z0-9.]+\.d\.ts$/.test(fileName) ? Date.now() : 0;
 			try {
 				const content = fs.readFileSync(fileName, "utf-8");
 				snapshots.set(fileName, { content, version: 1 });
 				return ts.ScriptSnapshot.fromString(content);
 			} catch {
 				return undefined;
+			} finally {
+				if (libStart) {
+					recordPerf("layer1.libReadMs", Date.now() - libStart);
+				}
 			}
 		},
 		getCurrentDirectory: () => workspaceRoot,
@@ -208,12 +218,24 @@ export function runLSPFixerPass(opts: LSPFixerOptions): LSPFixerResult {
 		snapshots.set(abs, { content, version: 1 });
 	}
 
-	const service = ts.createLanguageService(host, ts.createDocumentRegistry());
+	if (isPerfEnabled()) {
+		recordPerf("layer1.coldCount", 1);
+	}
+	const service = timePerf("layer1.createServiceMs", () =>
+		ts.createLanguageService(host, ts.createDocumentRegistry()),
+	);
 
 	let iter = 0;
 	let lastErrorSignatures = new Set<string>();
 	for (iter = 1; iter <= maxIterations; iter++) {
-		const fixableErrors = collectFixableErrors(service, snapshots, workspaceRoot);
+		// The first diagnostics pass forces the cold lib-file parse — time it
+		// separately as the Layer-1 lib-load proxy (T-3c-1 baseline).
+		const fixableErrors =
+			iter === 1
+				? timePerf("layer1.firstDiagnosticsMs", () =>
+						collectFixableErrors(service, snapshots, workspaceRoot),
+					)
+				: collectFixableErrors(service, snapshots, workspaceRoot);
 		if (fixableErrors.length === 0) {
 			break;
 		}

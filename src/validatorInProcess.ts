@@ -24,6 +24,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
+import { isPerfEnabled, recordPerf, timePerf } from "./perfInstrument.js";
 
 export interface InProcessTscResult {
 	passed: boolean;
@@ -178,13 +179,41 @@ function getOrCreateProgram(
 			return path.join(workspaceLibDir, fileName);
 		};
 	}
+	// Perf instrumentation (opt-in via TSFIX_PERF / benchmark --perf): time how
+	// long the cold lib-file load takes. `host.getSourceFile` reads *and* parses
+	// each `.d.ts`, so summing it over lib files is the true Layer-0 lib-load
+	// cost the shared-Program refactor (T-3c-2) aims to eliminate.
+	if (isPerfEnabled()) {
+		recordPerf("layer0.coldCount", 1);
+		const originalGetSourceFile = host.getSourceFile.bind(host);
+		host.getSourceFile = ((fileName: string, ...rest: unknown[]) => {
+			if (!/lib\.[a-z0-9.]+\.d\.ts$/.test(fileName)) {
+				return (originalGetSourceFile as (...a: unknown[]) => ts.SourceFile | undefined)(
+					fileName,
+					...rest,
+				);
+			}
+			const start = Date.now();
+			try {
+				return (originalGetSourceFile as (...a: unknown[]) => ts.SourceFile | undefined)(
+					fileName,
+					...rest,
+				);
+			} finally {
+				recordPerf("layer0.libLoadMs", Date.now() - start);
+			}
+		}) as ts.CompilerHost["getSourceFile"];
+	}
+
 	let program: ts.Program;
 	try {
-		program = ts.createProgram({
-			rootNames: parsed.fileNames,
-			options: parsed.options,
-			host,
-		});
+		program = timePerf("layer0.createProgramMs", () =>
+			ts.createProgram({
+				rootNames: parsed.fileNames,
+				options: parsed.options,
+				host,
+			}),
+		);
 	} catch (err) {
 		logger.error(
 			`[in-process-tsc] createProgram failed: ${err instanceof Error ? err.message : String(err)}`,

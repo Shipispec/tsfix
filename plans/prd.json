@@ -1,0 +1,87 @@
+{
+  "repo": "shipispec/tsfix",
+  "branchName": "ralph/phase3-perf-realfixtures",
+  "verifyCommand": "npm run check-types && npm run test && npm run benchmark",
+  "acceptanceCriteria": [
+    "npm run check-types passes (clean)",
+    "npm run test passes (vitest, all files)",
+    "npm run benchmark passes 14/14 with no regression",
+    "All non-skipped features have passes: true"
+  ],
+  "features": [
+    {
+      "id": "T-3c-1",
+      "title": "Baseline perf instrumentation for lib-file double-load",
+      "priority": "high",
+      "passes": true,
+      "completed_at": "2026-06-10",
+      "acceptance_criteria": [
+        "benchmark/run-benchmark.ts records per-fixture timing including lib-load cost",
+        "Baseline numbers (cold lib-load in validatorInProcess + tsLanguageServiceFixer) written to plans/progress.md",
+        "npm run benchmark still 14/14; check-types clean"
+      ],
+      "notes": "ARCHITECTURE.md section 9: lib files parsed twice (~600-800ms + ~200ms). Quantify before refactoring."
+    },
+    {
+      "id": "T-3c-2",
+      "title": "Shared Program/host abstraction so Layer 0 and Layer 1 share one lib-file parse",
+      "priority": "high",
+      "passes": false,
+      "acceptance_criteria": [
+        "validatorInProcess.ts (Layer 0) and tsLanguageServiceFixer.ts (Layer 1) consume a single shared lib-file parse / host",
+        "Diagnostics produced are byte-identical to pre-refactor (regression-tested)",
+        "Measured per-fixture latency improves vs T-3c-1 baseline (record in progress.md)",
+        "npm run test passes; npm run benchmark 14/14; check-types clean"
+      ],
+      "notes": "ARCHITECTURE.md section 12 D2. Layer 1 uses LanguageServiceHost, Layer 0 uses CompilerHost - unify the host abstraction. Do NOT bundle typescript; keep the workspace lib-path bet intact (see plans/guardrails.md SIGN-102)."
+    },
+    {
+      "id": "T-3c-3",
+      "title": "Document shared-Program decision in ARCHITECTURE.md and ROADMAP.md",
+      "priority": "medium",
+      "passes": false,
+      "acceptance_criteria": [
+        "ARCHITECTURE.md section 9 (perf) and section 12 D2 updated to reflect the shipped shared-Program approach",
+        "ROADMAP.md Phase 3c marked done with the measured latency delta",
+        "check-types/test/benchmark still green"
+      ],
+      "notes": "Docs-only; depends on T-3c-2 landing."
+    },
+    {
+      "id": "T-3b-1",
+      "title": "fixtures/REAL.md documenting real-failure fixture format + node_modules strategy",
+      "priority": "high",
+      "passes": false,
+      "acceptance_criteria": [
+        "fixtures/REAL.md exists: real-<timestamp>-<hash>/ layout, expected.json schema, mustPass lifecycle (false then true once fixed)",
+        "Documents node_modules strategy option (a): commit broken .ts(x) + package-lock.json + setup.sh (per ROADMAP 3b)",
+        "check-types/test/benchmark still green"
+      ],
+      "notes": "ROADMAP Phase 3b. so-real-* fixtures already exist; this formalizes the real-failure capture format."
+    },
+    {
+      "id": "T-3b-2",
+      "title": "Enhance scripts/capture-fixture.mjs to emit real-failure fixture dirs",
+      "priority": "high",
+      "passes": false,
+      "acceptance_criteria": [
+        "capture-fixture.mjs writes fixtures/real-<timestamp>-<hash>/ with broken files, Diagnostic[] snapshot, and expected.json (mustPass:false default) + setup.sh",
+        "A smoke/unit test exercises the capture flow on a sample broken workspace",
+        "Existing benchmark fixture discovery is unaffected; check-types/test/benchmark green"
+      ],
+      "notes": "Reuse existing scripts/capture-fixture.mjs. expected.json schema already in repo (fixtures/*/expected.json)."
+    },
+    {
+      "id": "T-3b-3",
+      "title": "Benchmark harness treats mustPass:false fixtures as report-only (non-blocking)",
+      "priority": "medium",
+      "passes": false,
+      "acceptance_criteria": [
+        "benchmark/run-benchmark.ts reads expected.json mustPass; mustPass:false fixtures are reported but do not fail the run/CI",
+        "Add/convert one seed real-* fixture (mustPass:false) to validate the report-only path end-to-end",
+        "npm run benchmark stays 14/14 on mustPass:true set; check-types/test green"
+      ],
+      "notes": "Lets production-captured failures live in-tree before a fix ships, then flip mustPass:true once fixed."
+    }
+  ]
+}
