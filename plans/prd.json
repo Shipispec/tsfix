@@ -26,7 +26,8 @@
       "id": "T-3c-2",
       "title": "Shared Program/host abstraction so Layer 0 and Layer 1 share one lib-file parse",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-10",
       "acceptance_criteria": [
         "validatorInProcess.ts (Layer 0) and tsLanguageServiceFixer.ts (Layer 1) consume a single shared lib-file parse / host",
         "Diagnostics produced are byte-identical to pre-refactor (regression-tested)",

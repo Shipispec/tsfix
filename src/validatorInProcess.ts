@@ -25,6 +25,11 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
 import { isPerfEnabled, recordPerf, timePerf } from "./perfInstrument.js";
+import {
+	acquireSharedLibSourceFile,
+	isLibFile,
+	isSharedHostEnabled,
+} from "./sharedTsHost.js";
 
 export interface InProcessTscResult {
 	passed: boolean;
@@ -179,29 +184,44 @@ function getOrCreateProgram(
 			return path.join(workspaceLibDir, fileName);
 		};
 	}
-	// Perf instrumentation (opt-in via TSFIX_PERF / benchmark --perf): time how
-	// long the cold lib-file load takes. `host.getSourceFile` reads *and* parses
-	// each `.d.ts`, so summing it over lib files is the true Layer-0 lib-load
-	// cost the shared-Program refactor (T-3c-2) aims to eliminate.
-	if (isPerfEnabled()) {
+	// Shared lib-file parse (T-3c-2): route lib `.d.ts` reads through the
+	// process-global DocumentRegistry so Layer 0 and Layer 1 parse them exactly
+	// once instead of once each. `acquireSharedLibSourceFile` returns the same
+	// parsed+bound SourceFile that Layer 1's LanguageService will reuse. Opt out
+	// via TSFIX_SHARED_HOST=false (see sharedTsHost.ts).
+	//
+	// Perf instrumentation (opt-in via TSFIX_PERF / benchmark --perf) wraps the
+	// same call: `layer0.libLoadMs` measures the lib `getSourceFile` time, which
+	// now collapses toward ~0 for the second/third consumer of a shared parse.
+	const sharedHost = isSharedHostEnabled();
+	const perf = isPerfEnabled();
+	if (perf) {
 		recordPerf("layer0.coldCount", 1);
+	}
+	if (sharedHost || perf) {
 		const originalGetSourceFile = host.getSourceFile.bind(host);
 		host.getSourceFile = ((fileName: string, ...rest: unknown[]) => {
-			if (!/lib\.[a-z0-9.]+\.d\.ts$/.test(fileName)) {
+			const call = (): ts.SourceFile | undefined => {
+				if (sharedHost && isLibFile(fileName)) {
+					const shared = acquireSharedLibSourceFile(fileName, parsed.options);
+					if (shared) {
+						return shared;
+					}
+				}
 				return (originalGetSourceFile as (...a: unknown[]) => ts.SourceFile | undefined)(
 					fileName,
 					...rest,
 				);
+			};
+			if (perf && isLibFile(fileName)) {
+				const start = Date.now();
+				try {
+					return call();
+				} finally {
+					recordPerf("layer0.libLoadMs", Date.now() - start);
+				}
 			}
-			const start = Date.now();
-			try {
-				return (originalGetSourceFile as (...a: unknown[]) => ts.SourceFile | undefined)(
-					fileName,
-					...rest,
-				);
-			} finally {
-				recordPerf("layer0.libLoadMs", Date.now() - start);
-			}
+			return call();
 		}) as ts.CompilerHost["getSourceFile"];
 	}
 

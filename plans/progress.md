@@ -23,6 +23,7 @@ Task track: Phase 3c (shared-Program perf) + Phase 3b (real-failure fixtures)
 - `src/validatorInProcess.ts` — Layer 0 in-process tsc
 - `src/tsLanguageServiceFixer.ts` — Layer 1 LSP auto-fixer
 - `src/perfInstrument.ts` — opt-in perf spans (new, T-3c-1)
+- `src/sharedTsHost.ts` — shared DocumentRegistry / lib-parse cache (new, T-3c-2)
 - `benchmark/run-benchmark.ts` — harness; `--perf` flag prints lib-load breakdown
 - `ARCHITECTURE.md` §9 (perf model), §12 D2 (shared-Program open question)
 
@@ -105,5 +106,88 @@ synthetic-typo-ts2552                 602  3793 2  224  5400  10333
 **Verification:** `npm run check-types` clean · `npm run test` 147/147 passed
 (13 files; the 3 "errors" are vitest-worker `onTaskUpdate` RPC timeouts under
 WSL2, not test failures) · `npm run benchmark` 14/14, default output unchanged.
+
+---
+
+### Task: T-3c-2 - Shared Program/host abstraction (one lib-file parse)
+
+**What was implemented:**
+- Added `src/sharedTsHost.ts`: one process-global `ts.DocumentRegistry` plus a
+  lib-text snapshot cache. The registry is TypeScript's own primitive for
+  sharing parsed+bound `SourceFile`s across compilations — it is the unifying
+  abstraction that lets a `CompilerHost` (Layer 0) and a `LanguageService`
+  (Layer 1) consume a single lib-file parse.
+  - `acquireSharedLibSourceFile(fileName, options)` — Layer 0 calls this from
+    its `CompilerHost.getSourceFile` for lib `.d.ts` files; it `acquireDocument`s
+    from the shared registry with a constant version (`"1"`, libs are immutable).
+  - `getSharedDocumentRegistry()` — Layer 1 hands this to
+    `createLanguageService` instead of a fresh `ts.createDocumentRegistry()`.
+    Same registry + same settings-derived bucket key + same constant lib version
+    ⇒ the lib SourceFile Layer 0 already parsed is reused, not re-parsed.
+  - `sharedScriptVersion()` — because the shared registry now *persists* across
+    passes, Layer 1's **non-lib** files are versioned by content (FNV-1a hash +
+    in-pass edit counter). This guarantees the registry can never hand back a
+    stale parse of a user file whose content changed between passes, while
+    identical content is still reused. Lib files keep the constant version.
+- `validatorInProcess.ts`: merged the shared-lib routing into the existing
+  (opt-in) perf wrapper around `host.getSourceFile`. Shared routing is always on
+  (perf timing still opt-in); `layer0.libLoadMs` now measures the shared call.
+- `tsLanguageServiceFixer.ts`: shared registry + content-addressed
+  `getScriptVersion`.
+- Opt-out: `TSFIX_SHARED_HOST=false` restores the exact pre-refactor behavior
+  (independent parses, fresh per-call registry, ordinal versions). The
+  regression test runs both ways and asserts equality.
+
+**Files changed:**
+- `src/sharedTsHost.ts` (new), `src/sharedTsHost.test.ts` (new)
+- `src/validatorInProcess.ts`, `src/tsLanguageServiceFixer.ts`
+
+**Why a shared DocumentRegistry (not a unified Program):** §12 D2 framed this as
+"pick one of the two host abstractions." In practice neither host had to be
+discarded — `createProgram` and `createLanguageService` already share parses
+*via the DocumentRegistry* when given the same registry, key, and version. So
+Layer 0 keeps its CompilerHost, Layer 1 keeps its LanguageServiceHost, and they
+overlap only on the immutable lib slice. This is the minimal, byte-identical
+change and keeps the workspace lib-path bet intact (SIGN-102 — no bundling).
+
+**Scope decision:** only lib `.d.ts` files are shared, not the `node_modules`
+dependency `.d.ts` graph. Lib files are the named target ("lib-file double-load")
+and are unconditionally immutable, so sharing them is safe with a constant
+version. Sharing the dep graph too would be a larger win but needs the same
+content-addressing treatment and more divergence risk; left as a follow-up.
+
+**Measured latency** (`npx tsx benchmark/run-benchmark.ts --perf`, same WSL2 box;
+treat as *relative*, run-to-run noise is high for createProgram/diag spans):
+
+| Span | T-3c-1 baseline | T-3c-2 | Δ |
+|---|---|---|---|
+| **Layer 0 cold lib-load** (`host.getSourceFile`, the shared slice) | **393.7 ms** | **38.3 ms** | **−90%** |
+
+The Layer-0 lib-load span is the clean, low-noise signal directly attributable
+to the change: lib files now parse once (first fixture pays it) and every
+later consumer — Layer 1, the Layer-0 re-validation after a fix, and subsequent
+fixtures with matching settings — hits the shared registry (~0 ms). The
+`layer1.firstDiagnosticsMs` span is dominated by the dependency `.d.ts` graph
+parse + full typecheck (intentionally *not* shared) and swings with machine
+load, so it is not a reliable signal for this change.
+
+**Learnings:**
+- A persistent shared registry is only safe if non-lib (mutable) files are
+  content-versioned. The first instinct — share the registry but keep ordinal
+  versions — would let a second pass on the same path read a stale parse. The
+  FNV-1a content version closes that hole and is what makes the optimization
+  correct as a published-library default, not just a benchmark trick.
+- Lib and non-lib versions must agree across layers for sharing to fire: both
+  Layer 0 (`acquireDocument` version `"1"`) and Layer 1
+  (`getScriptVersion` → `"1"` for libs) must emit the identical version, or the
+  registry treats them as different documents and re-parses.
+- The shared registry must **not** be cleared by `resetInProcessTscCache()`:
+  `runValidationLoop` resets the Program cache before *both* Layer-0 runs, so
+  clearing the lib parse there would defeat the whole optimization. Reset lives
+  in a separate `resetSharedTsHost()` used only by tests / the opt-out path.
+
+**Verification:** `npm run check-types` clean · `npm run test` 151/151 passed
+(14 files; +4 new shared-host tests; same 3 benign WSL2 RPC-timeout "errors") ·
+`npm run benchmark` 14/14, default output byte-identical.
 
 ---

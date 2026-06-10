@@ -35,6 +35,12 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as ts from "typescript";
 import { isPerfEnabled, recordPerf, timePerf } from "./perfInstrument.js";
+import {
+	getSharedDocumentRegistry,
+	isLibFile,
+	isSharedHostEnabled,
+	sharedScriptVersion,
+} from "./sharedTsHost.js";
 
 /** TS error codes whose built-in code-fix is safe to apply without human review. */
 const SAFE_FIXABLE_CODES = new Set<number>([
@@ -159,9 +165,26 @@ export function runLSPFixerPass(opts: LSPFixerOptions): LSPFixerResult {
 	const workspaceLibDir = path.join(workspaceRoot, "node_modules", "typescript", "lib");
 	const hasWorkspaceLib = fs.existsSync(workspaceLibDir);
 
+	// Shared lib-file parse (T-3c-2): reuse the process-global DocumentRegistry
+	// so the lib `.d.ts` parse Layer 0 already paid for is reused here instead
+	// of re-parsed. With a persistent shared registry, non-lib files must be
+	// versioned by content (`sharedScriptVersion`) so a later pass on the same
+	// path can never see a stale parse. Opt out via TSFIX_SHARED_HOST=false,
+	// which restores the pre-refactor fresh-registry + ordinal-version behavior.
+	const sharedHost = isSharedHostEnabled();
+
 	const host: ts.LanguageServiceHost = {
 		getScriptFileNames: () => Array.from(snapshots.keys()),
-		getScriptVersion: (fileName) => String(snapshots.get(fileName)?.version ?? 0),
+		getScriptVersion: (fileName) => {
+			const snap = snapshots.get(fileName);
+			if (!sharedHost) {
+				return String(snap?.version ?? 0);
+			}
+			if (!snap) {
+				return isLibFile(fileName) ? "1" : "0";
+			}
+			return sharedScriptVersion(fileName, snap.content, snap.version);
+		},
 		getScriptSnapshot: (fileName) => {
 			const cached = snapshots.get(fileName);
 			if (cached) {
@@ -222,7 +245,10 @@ export function runLSPFixerPass(opts: LSPFixerOptions): LSPFixerResult {
 		recordPerf("layer1.coldCount", 1);
 	}
 	const service = timePerf("layer1.createServiceMs", () =>
-		ts.createLanguageService(host, ts.createDocumentRegistry()),
+		ts.createLanguageService(
+			host,
+			sharedHost ? getSharedDocumentRegistry() : ts.createDocumentRegistry(),
+		),
 	);
 
 	let iter = 0;
