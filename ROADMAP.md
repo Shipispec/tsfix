@@ -1,6 +1,6 @@
 # `@shipispec/tsfix` — Project Roadmap
 
-> Generated: 2026-05-03. Last updated 2026-05-22 (v0.6.1 shipped: library-migrations + multi-provider + onLayerEvent). Historical entries below may reference the package's prototype name "tsc-defense-stack" — that's accurate provenance, not a stale link.
+> Generated: 2026-05-03. Last updated 2026-06-10 (v0.6.2 live on npm — cosmetic CLI string fix over v0.6.1's library-migrations + multi-provider + onLayerEvent). Historical entries below may reference the package's prototype name "tsc-defense-stack" — that's accurate provenance, not a stale link.
 > North star: ship a focused, trustable OSS package that vibe coders can drop into any project — not a super-app.
 
 ---
@@ -9,7 +9,7 @@
 
 | # | Question | Resolution |
 |---|---|---|
-| D1 | Is v0.1.0 going to npm publicly under `@shipispec/tsfix`? | **Yes.** Published 2026-05-04. v0.3.0 currently live; v0.4.0 ready to publish. |
+| D1 | Is v0.1.0 going to npm publicly under `@shipispec/tsfix`? | **Yes.** Published 2026-05-04. v0.6.2 currently live on npm. |
 | D2 | If workspace lacks `typescript`, hard error or bundled fallback? | **Hard error + `peerDependencies` declaration.** Preserves lib-path fix; matches typical OSS bin convention. |
 | D3 | Mend agents into THIS package, or sister `@shipispec/tsmend`? | **In-package.** Originally decided as "sister package" (2026-05-03). **Reversed 2026-05-14** after the sister package proved to be pre-publish (`private: true`) and the two had effectively zero independent consumers — folding the work in eliminated a release-coordination tax that wasn't paying for itself. Layer 2 ships in `@shipispec/tsfix` v0.4.0; tsmend repo archived with a MOVED pointer. |
 | D4 | Support Node 20.x, or require Node 23+? | **Node 20.x minimum.** Matches VS Code Extension Host runtime. |
@@ -233,16 +233,20 @@ The architectural moat is **`getTypeContext`**: resolves an error site to its de
 - CI gains a Layer-2 step gated on the secret.
 - 35/35 pass on `claude-haiku-4-5` at $0.036 total ($0.001/fixture avg), iter-1 success 97%, P95 latency ~1.5s.
 
-### 2d — Unified result type (deferred to v0.5)
+### 2d — Unified result type ✅ (2026-05-19, v0.6.1)
 
-Originally planned: extend `runValidationLoop` result with `errorsAfterAllLayers`, `mendFixesApplied`, `totalCostUsd`. Deferred — the v0.4.0 design keeps Layer 0/1 and Layer 2 as separate entry points (`runValidationLoop` vs `runMendLoop`), so the unified result type doesn't have a natural home yet. Will land alongside the `onLayerEvent` callback in Phase 3a.
+Originally planned: extend `runValidationLoop` result with `errorsAfterAllLayers`, `mendFixesApplied`, `totalCostUsd`. Deferred at v0.4.0 because Layer 0/1 and Layer 2 stayed separate entry points (`runValidationLoop` vs `runMendLoop`) with no natural home for a unified result. **Shipped in v0.6.1** alongside the `onLayerEvent` callback (Phase 3a): the new `runFullStack(opts)` entrypoint composes Layer 0/1 → 2 → 4 and returns `RunFullStackResult` — a flat shape with `errorsAfterLayer1`, `errorsAfterAllLayers`, `totalCostUsd`, `totalLatencyMs`, `remainingByCode`, `remainingByFile`, plus per-layer sub-results. Matches this section's original sketch with cost + telemetry rolled in.
 
 ---
 
 ## Phase 3 — Telemetry + Real-Failure Pipeline
 **Goal:** Replace synthetic fixtures with real-world failure data so the package improves from actual use.
 
-### 3a — Structured per-layer events (callback, not accumulated array)
+### 3a — Structured per-layer events (callback, not accumulated array) ✅ (2026-05-19, v0.6.1)
+
+**Shipped in v0.6.1.** `onLayerEvent?: (event: LayerEvent) => void` is now an option on `ValidationLoopOptions`, `RunMendLoopOptions`, and `RunFullStackOptions`. Layer 1 emits one event per fixable-error attempt, Layer 2 one per `runMendLoop` iteration, Layer 4 one per stub applied (coalesced stubs emit one event per `stub × errorCode` pair). `costUsd` is intentionally omitted from the per-event payload — callers compute it from `result.layer2.totalInputTokens`/`totalOutputTokens` plus their own pricing. Undefined callback costs nothing. The unified result type (Phase 2d) landed in the same release via `runFullStack` / `RunFullStackResult`. Covered by 10 new tests in `src/runFullStack.test.ts`.
+
+Original design (as shipped):
 Emit via optional callback so the package never accumulates unbounded state:
 
 ```ts
@@ -285,10 +289,23 @@ Recommend (a) for the first 5–10 real fixtures, switch to (b) if/when CI insta
 
 ---
 
-### 3c — Performance: shared Program instance
-ARCHITECTURE.md §9 documents the issue: in-process tsc and the LSP fixer each load lib files independently (~600ms + ~200ms overhead per fixture). Unifying them behind a single `Program` requires picking one host abstraction.
+### 3c — Performance: shared lib-file parse ✅ (2026-06-10)
 
-Recommendation: keep separate instances for v0.1–v0.2 (correctness > performance), profile on a real 50-task spec run to quantify actual cost, then decide. If a full run costs $0.50 in LLM tokens and the extra lib-load costs 800ms, it's noise. If it's 30 seconds of wall time on a cold run, it's worth fixing.
+ARCHITECTURE.md §9 documented the issue: in-process tsc (Layer 0) and the LSP fixer (Layer 1) each loaded lib files independently (~600ms + ~200ms overhead per fixture). The original framing assumed the fix was "unify behind a single `Program`, which requires picking one host abstraction."
+
+**Shipped a smaller, byte-identical change instead — a shared `ts.DocumentRegistry`, not a unified `Program`.** Both hosts stay (Layer 0 keeps its `CompilerHost`, Layer 1 keeps its `LanguageServiceHost`); they overlap only on the immutable lib `.d.ts` slice by sharing one process-global registry + lib-text cache (`src/sharedTsHost.ts`). The lib parse is paid once; every later consumer hits the shared registry. See ARCHITECTURE.md §9 and §12 D2.
+
+- **T-3c-1** — opt-in perf instrumentation (`src/perfInstrument.ts`, `--perf` benchmark flag) to quantify the double-load before touching it.
+- **T-3c-2** — the shared registry. Correctness guard: non-lib files are content-versioned (FNV-1a) so a persistent registry can't hand back a stale parse; `TSFIX_SHARED_HOST=false` restores pre-refactor behavior and a regression test asserts byte-identical diagnostics both ways.
+- **T-3c-3** — this docs pass.
+
+**Measured latency delta** (the clean, low-noise span directly attributable to the change — Layer 0 cold lib-load via `host.getSourceFile`, averaged over 14 fixtures on the same WSL2 box):
+
+| Span | T-3c-1 baseline | T-3c-2 | Δ |
+|---|---|---|---|
+| Layer 0 cold lib-load (shared slice) | 393.7 ms | 38.3 ms | **−90%** |
+
+Scope note: only lib `.d.ts` files are shared, not the `node_modules` dependency `.d.ts` graph (which dominates `layer1.firstDiagnosticsMs`). Sharing the dep graph too is a larger win but needs the same content-addressing with more divergence risk — left as a follow-up. No regression: `npm run benchmark` stays 14/14, diagnostics byte-identical. Full methodology in `plans/progress.md` (T-3c-1 / T-3c-2).
 
 ---
 
@@ -298,7 +315,7 @@ These are documented in ARCHITECTURE.md §12. Deferring until there's real data:
 
 | Question | Defer until |
 |---|---|
-| Should detection and fixing share a single Program? | Phase 3 perf profiling |
+| ~~Should detection and fixing share a single Program?~~ | ✅ Resolved Phase 3c — shared `DocumentRegistry` (not a unified Program); see ARCHITECTURE.md §12 D2 |
 | Custom rewriter for `export { X } from "./mod"` LSP gap? | Real-failure fixture data shows frequency |
 | Config-driven safe set? | v0.2 — only if mend extraction reveals need |
 | Transactional persist-to-disk? | Only if package is used outside LLM iteration context |
@@ -327,7 +344,9 @@ Phases are ordered, not time-bound. Effort estimates omitted because the cadence
 | **0.5** | v0.1.0 on npm | ✅ 2026-05-04 — `npm view @shipispec/tsfix version` returns `0.4.0` (live: `0.3.0`) |
 | **1a–1d** | OSS launch-ready | ✅ 2026-05-07 (v0.3.0) — `npx @shipispec/tsfix ./my-project` works cold; CI green; public README |
 | **2a–2d** | Layer 2 in-package | ✅ 2026-05-14 (v0.4.0 merged) — `runMendLoop` + `mendSingleFile` shipped, 35/35 Layer-2 fixtures pass on Haiku 4.5, opt-in via library API |
-| **3a–3c** | Telemetry + real-failure pipeline | pending — `onLayerEvent` callback, unified result type, first 5 real-failure fixtures, shared Program profiling |
+| **3a** | Telemetry + unified result | ✅ 2026-05-19 (v0.6.1) — `onLayerEvent` callback + `runFullStack`/`RunFullStackResult` shipped |
+| **3c** | Shared lib-file parse (perf) | ✅ 2026-06-10 — shared `DocumentRegistry`; Layer-0 cold lib-load 393.7 ms → 38.3 ms (−90%), benchmark still 14/14 |
+| **3b** | Real-failure fixture pipeline | pending — first 5 real-failure fixtures |
 | **4+** | Layers 3–4 | pending — multi-file mend via `findReferences()`, stub-and-continue escape hatch |
 
 **Lessons from the path:** "Don't start Phase 2 (mend extraction) before Phase 1 (public bin + CI) is done" held — by the time Layer 2 work landed, the benchmark and matrix gates were already there as CI safety nets. The bigger lesson was D3: building tsmend as a sister package first, then folding it back in, was the right call. The sister-package phase forced clean contract design (MendContext shipped in v0.3.0 *before* any mend code), and the merge happened only once the API surface had stabilized through real implementation work. The two-step "split, design contract, merge" was slower than "in-package from day one" would have been, but produced a cleaner public API.

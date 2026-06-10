@@ -270,7 +270,16 @@ The benchmark's 14 fixtures run end-to-end in ~10 seconds. Where the time goes (
 | `getCodeFixesAtPosition` | ~5-50ms per error | Cheap; the LSP already has the program loaded |
 | Persist to disk | <5ms total | One `writeFileSync` per edited file |
 
-**The expensive part is loading lib files twice** — once in `runInProcessTsc`, once in `runLSPFixerPass`. They're separate `Program` / `LanguageService` instances that don't share the parsed lib cache. A v0.2 optimization would unify them behind a single `Program` reused across detection and fixing, but that requires refactoring the LSP fixer's host abstraction (it relies on `LanguageServiceHost`, not `CompilerHost`).
+**The expensive part *used to be* loading lib files twice** — once in `runInProcessTsc`, once in `runLSPFixerPass`. They are separate `Program` / `LanguageService` instances that historically didn't share the parsed lib cache. **Phase 3c (shipped 2026-06-10) closes this** without discarding either host: instead of a single unified `Program`, the two layers now share one process-global `ts.DocumentRegistry` plus a lib-text snapshot cache (`src/sharedTsHost.ts`). A `DocumentRegistry` is TypeScript's own primitive for sharing parsed+bound `SourceFile`s across compilations, so:
+
+- Layer 0's `CompilerHost.getSourceFile` routes lib `.d.ts` reads through `acquireSharedLibSourceFile`, which `acquireDocument`s from the shared registry with a constant version (`"1"` — libs are immutable).
+- Layer 1 hands `createLanguageService` the same registry (`getSharedDocumentRegistry()`) instead of a fresh one. Same registry + same settings-derived bucket key + same constant lib version ⇒ the lib `SourceFile` Layer 0 already parsed is reused, not re-parsed.
+
+The lib parse is now paid **once** (the first fixture pays it); every later consumer — Layer 1, the Layer-0 re-validation after a fix, and subsequent fixtures with matching compiler settings — hits the shared registry. Measured effect on the low-noise span directly attributable to the change (Layer 0 cold lib-load via `host.getSourceFile`): **393.7 ms → 38.3 ms per fixture (−90%)**. See §12 D2 for why a shared registry beat a unified `Program`, and `plans/progress.md` (T-3c-2) for the full methodology.
+
+**Correctness guard:** a *persistent* shared registry is only safe if mutable (non-lib) files are content-versioned, or a second pass on the same path could read a stale parse. Layer 1 therefore versions non-lib files by content (FNV-1a hash + in-pass edit counter) via `sharedScriptVersion()`; lib files keep the constant `"1"`. Opt-out for debugging / A-B verification: `TSFIX_SHARED_HOST=false` restores independent parses, a fresh per-call registry, and ordinal versions. A regression test (`src/sharedTsHost.test.ts`) runs both ways and asserts byte-identical diagnostics.
+
+**Scope:** only lib `.d.ts` files are shared, not the `node_modules` dependency `.d.ts` graph (that graph dominates `layer1.firstDiagnosticsMs` but needs the same content-addressing with more divergence risk — left as a follow-up).
 
 **`skipLibCheck: true` is load-bearing.** The fixer's compiler options force it on regardless of the workspace's `tsconfig`. Without it, lib `.d.ts` errors (which exist in many TypeScript versions) would dominate the diagnostic output and burn time on irrelevant checks.
 
@@ -334,7 +343,7 @@ Things we haven't decided, in rough order of how much they'd change the package:
 
 1. **Should the package own the `ParsedTask` → `MendContext` adapter, or should `spectoship2` provide it?** Tied to the v0.2 mend-layer extraction. Current lean: spectoship2 provides; this package only defines the interface.
 
-2. **Should detection and fixing share a single `Program` instance?** Current architecture creates two (one in-process tsc `Program`, one fixer `LanguageService`) with their own lib-file parses. Unifying would cut ~30% of pass latency but requires picking one of the two host abstractions.
+2. ~~**Should detection and fixing share a single `Program` instance?**~~ **Resolved (Phase 3c, 2026-06-10).** The question assumed the choice was "pick one of the two host abstractions" — discard either the `CompilerHost` (Layer 0) or the `LanguageServiceHost` (Layer 1). In practice neither had to go: `createProgram` and `createLanguageService` already share parsed `SourceFile`s *when handed the same `ts.DocumentRegistry`, bucket key, and version*. So both hosts stay, and they overlap only on the immutable lib slice via a shared registry (`src/sharedTsHost.ts`). This was the minimal, byte-identical change and it keeps the workspace lib-path bet intact (no bundling — see ROADMAP 1a / SIGN-102). Result: Layer-0 cold lib-load 393.7 ms → 38.3 ms (−90%). Details in §9 and `plans/progress.md` (T-3c-2). The remaining unshared cost — the `node_modules` dependency `.d.ts` graph — is a deliberately-deferred follow-up, not a unified-`Program` rewrite.
 
 3. **Should the safe set be config-driven instead of code-constant?** The five fixable codes are hard-coded today. A `tscDefenseConfig` field in `package.json` could let downstream projects opt into wider sets (e.g. "yes, fix TS7006 too — I'm doing greenfield"). Current lean: no, because the safety claim depends on testing each code, and config files invite untested combinations.
 

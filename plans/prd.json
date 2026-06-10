@@ -40,7 +40,8 @@
       "id": "T-3c-3",
       "title": "Document shared-Program decision in ARCHITECTURE.md and ROADMAP.md",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-10",
       "acceptance_criteria": [
         "ARCHITECTURE.md section 9 (perf) and section 12 D2 updated to reflect the shipped shared-Program approach",
         "ROADMAP.md Phase 3c marked done with the measured latency delta",

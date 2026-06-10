@@ -191,3 +191,40 @@ load, so it is not a reliable signal for this change.
 `npm run benchmark` 14/14, default output byte-identical.
 
 ---
+
+### Task: T-3c-3 - Document shared-Program decision (docs-only)
+
+**What was implemented:** (no code — docs only; depended on T-3c-2 landing)
+- `ARCHITECTURE.md §9` (perf model): rewrote the "loading lib files twice"
+  paragraph. Now states Phase 3c closed the double-load via a shared
+  `ts.DocumentRegistry` + lib-text cache (`src/sharedTsHost.ts`) rather than a
+  unified `Program`, with the routing for both layers, the −90% (393.7→38.3 ms)
+  Layer-0 cold lib-load delta, the content-versioning correctness guard
+  (FNV-1a, `TSFIX_SHARED_HOST=false` opt-out + byte-identical regression test),
+  and the lib-only scope (dep `.d.ts` graph deferred).
+- `ARCHITECTURE.md §12 D2` (open question #2): struck through and marked
+  **Resolved (Phase 3c)**. Explains the framing shift — neither host had to be
+  discarded; both share the immutable lib slice via the registry.
+- `ROADMAP.md Phase 3c`: retitled "shared lib-file parse", marked ✅ 2026-06-10,
+  added the T-3c-1/2/3 breakdown and the measured-latency table.
+- `ROADMAP.md` summary timeline + deferred-decisions table: 3c row split out as
+  ✅ (3b still pending); "share a single Program?" decision marked resolved.
+
+**Files changed:** `ARCHITECTURE.md`, `ROADMAP.md` (+ `plans/prd.json`,
+`plans/progress.md`).
+
+**Learnings:**
+- The §9 prose and §12 D2 both pre-supposed a "unified Program / pick one host"
+  fix. The shipped change contradicted that framing, so the docs needed the
+  *reasoning* corrected (shared registry, both hosts kept), not just a status
+  flip — otherwise a future reader re-opens the discarded design.
+- Kept every figure consistent with T-3c-2's progress entry (393.7→38.3 ms,
+  −90%, lib-only scope) so the three docs agree; the low-noise Layer-0 lib-load
+  span is the only number quoted as the headline (the L1 firstDiagnostics span
+  is machine-load-dominated and not attributable to the change).
+
+**Verification:** `npm run check-types` clean · `npm run test` 151/151 passed
+(14 files; same 2 benign WSL2 RPC-timeout "errors") · `npm run benchmark` 14/14,
+output byte-identical (docs-only change touches no runtime path).
+
+---
