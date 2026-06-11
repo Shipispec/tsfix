@@ -57,7 +57,8 @@
       "id": "T-4-4",
       "title": "Layer 3 multiFileMend() + wiring (opt-in, OFF by default; LLM mocked in tests)",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
       "acceptance_criteria": [
         "src/multiFileMend.ts exports multiFileMend(opts) — ONE LLM call spanning N files via the blast radius; applies coalesced multi-file SEARCH/REPLACE by reusing applyEditBlocks across files",
         "Wired as Layer 3 between Layer 2 and Layer 4 in runMendLoop/runFullStack via an opt-in flag (e.g. multiFile: true / enableLayer3), DEFAULT OFF; emits LayerEvent { layer: 3, ... }",

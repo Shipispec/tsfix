@@ -359,8 +359,12 @@ export type {
 	BlastRadiusReference,
 } from "./blastRadius.js";
 
-export { buildMultiFileMendPrompt } from "./multiFileMend.js";
-export type { MultiFileMendPrompt } from "./multiFileMend.js";
+export { buildMultiFileMendPrompt, multiFileMend } from "./multiFileMend.js";
+export type {
+	MultiFileMendPrompt,
+	MultiFileMendOptions,
+	MultiFileMendResult,
+} from "./multiFileMend.js";
 
 export { runMendLoop } from "./runMendLoop.js";
 export type {
@@ -418,6 +422,13 @@ export interface RunFullStackOptions {
 		apiKey: string;
 		maxIterations?: number;
 	};
+	/**
+	 * Between Layer 2 and Layer 4, run a Layer 3 multi-file mend: ONE
+	 * coordinated LLM call spanning the blast radius of the errors Layer 2
+	 * couldn't fix. Requires `llm`. Opt-in, default OFF. With this off,
+	 * behavior is identical to before Layer 3 existed.
+	 */
+	enableLayer3?: boolean;
 	/**
 	 * After Layer 2 (if any), insert `// @ts-expect-error - tsfix: …` above
 	 * each unresolved error site so tsc exits 0. Opt-in. Default false.
@@ -512,7 +523,7 @@ function costUsd(provider: LLMProvider, model: string, inputTokens: number, outp
  */
 export async function runFullStack(opts: RunFullStackOptions): Promise<RunFullStackResult> {
 	const startMs = Date.now();
-	const { workspaceRoot, llm, stubOnFailure = false, dryRun = false, onLayerEvent } = opts;
+	const { workspaceRoot, llm, enableLayer3 = false, stubOnFailure = false, dryRun = false, onLayerEvent } = opts;
 
 	const layer1 = runValidationLoop({
 		workspaceRoot,
@@ -539,6 +550,7 @@ export async function runFullStack(opts: RunFullStackOptions): Promise<RunFullSt
 			},
 			llm: { provider: llm.provider, model: llm.model, apiKey: llm.apiKey },
 			maxIterations: llm.maxIterations,
+			enableLayer3,
 			stubOnFailure,
 			onLayerEvent,
 			_callLLM: opts._callLLM,

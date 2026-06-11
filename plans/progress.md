@@ -581,3 +581,79 @@ between Layers 2 and 4; runFullStack test resolves the forcing fixture to 0.
 forcing-multifile-ripple still `○ met contract` (1→1, report-only).
 
 ---
+
+### Task: T-4-4 - Layer 3 multiFileMend() + wiring (opt-in, OFF by default)
+
+**What was implemented:**
+- `src/multiFileMend.ts`: added `multiFileMend(opts)` — the Layer 3 mend call.
+  Builds the T-4-3 blast-radius prompt, makes ONE LLM call (`_callLLM`,
+  injectable; defaults to the shared `defaultLLMCall` now exported from
+  `mendAgent.ts`), parses SEARCH/REPLACE, and applies across files via the
+  existing `applyEditBlocks` (which already stacks blocks per file and handles
+  multiple files in one pass — no new multi-file applier needed). Returns
+  `affectedFiles` (the blast-radius span) so the caller knows the re-validation
+  scope. `MultiFileMendOptions` / `MultiFileMendResult` exported from `index.ts`.
+- `src/runMendLoop.ts`: wired Layer 3 between the Layer 2 for-loop and Layer 4.
+  New opt-in `enableLayer3?: boolean` (default OFF). When the Layer 2 loop exits
+  with leftover errors and `enableLayer3 && !dryRun`, runs `multiFileMend` once,
+  adds its tokens to the totals, emits `LayerEvent { layer: 3, ... }`, and sets
+  `stopReason: "multiFileFixed"` if it cleared everything. New `layer3?:
+  MultiFileMendResult` on the result. New `StopReason` member `"multiFileFixed"`.
+- **Re-validation scope (the key correctness point):** introduced
+  `revalidationFiles`, seeded from `filesInScope` (Layer 2's set, computed ONCE
+  from the initial diagnostics) and WIDENED by every Layer-3 affected file.
+  Layer 3 (and the subsequent Layer 4 stub re-validation) re-check over this
+  widened set. Without it the scoped re-check would go blind to an error the
+  multi-file edit migrated to a file outside the original error set — exactly
+  the blind spot T-4-2 documented for `runMendLoop`'s per-file scoping.
+- `src/index.ts` (`runFullStack`): added `enableLayer3?: boolean`, forwarded to
+  `runMendLoop`. Layer 3 cost is included automatically because its tokens flow
+  through `layer2.totalInput/OutputTokens`. runFullStack's final whole-workspace
+  re-derive (`discoverTsFiles`) already gives an honest 0-errors check.
+
+**Why `applyEditBlocks` is reused unchanged:** it already keys edits by file,
+snapshots per-file content in a Map, stacks multiple blocks against the same
+file before writing, and writes every touched file. A coordinated multi-file
+response is just N blocks naming N paths — the applier handles it natively. The
+"coalesced multi-file apply" the task asked for was already a property of Layer 2's
+applier; Layer 3 only had to feed it a cross-file block set.
+
+**Test design (2 new tests in `src/multiFileMend.test.ts`, LLM mocked — SIGN-107):**
+The shared mock `coordinatedLayer3LLM` discriminates layers by the prompt: the
+multi-file prompt contains the `MULTI_FILE_PREAMBLE` string "span MULTIPLE
+files", the single-file prompt does not. For Layer 2 it abstains (no edit → loop
+exits `noProgress`); for Layer 3 it returns a COORDINATED 2-file edit (retype
+`Value` to `number` in shared.ts + `String(value).toUpperCase()` in
+consumer-str.ts), which satisfies both consumers at once.
+1. `enableLayer3: true` → `runFullStack` drives the forcing fixture to 0 errors,
+   `stopReason === "multiFileFixed"`, `layer3.apply.applied === 2`, exactly one
+   `layer:3` event (fixed), and BOTH files changed on disk.
+2. `enableLayer3` omitted (default OFF) → fixture stays red, `layer3`
+   undefined, no `layer:3` event, the LLM is NEVER handed the multi-file prompt
+   (asserted over `mock.calls`), files untouched — the byte-identical-when-disabled
+   regression guard.
+
+**Learnings:**
+- The coordinated fix doesn't have to touch every blast-radius file — it has to
+  make the whole set type-check. `Value=number` + one conversion at the string
+  site is a clean 2-file fix; the contradiction is resolved by a use-site
+  conversion, not by satisfying the impossible "both number and string" type.
+- Layer-discrimination in a single mock via the prompt's own framing string is
+  the cleanest way to exercise "Layer 2 abstains → Layer 3 fixes" without two
+  separate mocks or call-count gymnastics. The marker is the real
+  `MULTI_FILE_PREAMBLE`, so the test can't drift from the builder.
+
+**Files changed:** `src/multiFileMend.ts`, `src/mendAgent.ts` (export
+`defaultLLMCall`), `src/runMendLoop.ts`, `src/index.ts`,
+`src/multiFileMend.test.ts` (+2 tests).
+
+**Verification:** `npm run check-types` clean · `npm run test` 172/172 passed
+(18 files; +2 new T-4-4 tests; same 3 benign WSL2 `onTaskUpdate` RPC-timeout
+"errors") · `npm run benchmark` exit 0, gate 7/7 (no regression — Layer 3 OFF by
+default), forcing-multifile-ripple still `○ met contract` (1→1, report-only).
+
+**Next:** T-4-5 (extract PRICING to `src/pricing.ts`), then T-4-6 (docs refresh).
+T-4-7 stays skipped (manual paid validation). Layer 3's mocked path is proven;
+T-4-7 is the real-model confirmation.
+
+---

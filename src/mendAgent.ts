@@ -249,7 +249,9 @@ function buildLanguageModel(provider: LLMProvider, model: string, apiKey: string
 	}
 }
 
-const defaultLLMCall: LLMCall = async ({ systemBlock, userBlock, provider = "anthropic", model, apiKey }) => {
+/** @internal — exported so Layer 3 (`multiFileMend`) shares the identical real
+ *  provider call path. Tests inject a fake `_callLLM`; real callers get this. */
+export const defaultLLMCall: LLMCall = async ({ systemBlock, userBlock, provider = "anthropic", model, apiKey }) => {
 	const llmModel = buildLanguageModel(provider, model, apiKey);
 	// Use top-level `system:` parameter (Vercel AI SDK v6 pattern) rather than
 	// putting a system role inside `messages` — the latter triggers the

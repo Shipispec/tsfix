@@ -38,11 +38,12 @@ import { fileURLToPath } from "node:url";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Diagnostic, MendContext } from "./index.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { runFullStack, type Diagnostic, type LayerEvent, type MendContext } from "./index.js";
 import { resetInProcessTscCache, runInProcessTsc } from "./validatorInProcess.js";
 import { resetSharedTsHost } from "./sharedTsHost.js";
 import { buildMultiFileMendPrompt } from "./multiFileMend.js";
+import type { LLMCall } from "./mendAgent.js";
 
 const require = createRequire(import.meta.url);
 const noopLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -283,5 +284,104 @@ describe("buildMultiFileMendPrompt — folds the blast radius into one prompt (T
 		} finally {
 			fs.rmSync(localWs, { recursive: true, force: true });
 		}
+	});
+});
+
+function searchReplaceBlock(file: string, search: string, replace: string): string {
+	return [file, "<<<<<<< SEARCH", search, "=======", replace, ">>>>>>> REPLACE"].join("\n");
+}
+
+/**
+ * Layer-3 mock LLM. Layer 2 (single-file prompt) abstains — the forcing fixture
+ * has no convergent single-file fix — so the loop falls through to Layer 3.
+ * Layer 3 (multi-file prompt, recognised by the MULTI_FILE_PREAMBLE) returns a
+ * COORDINATED two-file edit: retype the shared `Value` to `number` and convert
+ * at the string use-site. That satisfies BOTH consumers at once, which no
+ * single-file edit can do.
+ */
+const coordinatedLayer3LLM: LLMCall = vi.fn(async ({ systemBlock }) => {
+	if (systemBlock.includes("span MULTIPLE files")) {
+		return {
+			text: [
+				searchReplaceBlock("lib/shared.ts", "export type Value = string;", "export type Value = number;"),
+				searchReplaceBlock("lib/consumer-str.ts", "value.toUpperCase()", "String(value).toUpperCase()"),
+			].join("\n\n"),
+			inputTokens: 400,
+			outputTokens: 120,
+		};
+	}
+	// Layer 2 single-file pass: no usable edit → loop exits with errors.
+	return { text: "No single-file edit can resolve this.", inputTokens: 50, outputTokens: 10 };
+});
+
+describe("runFullStack wiring — Layer 3 multi-file mend (T-4-4)", () => {
+	let ws: string;
+
+	beforeEach(() => {
+		ws = setupWorkspace();
+		resetSharedTsHost();
+		vi.clearAllMocks();
+	});
+
+	afterEach(() => {
+		fs.rmSync(ws, { recursive: true, force: true });
+		resetSharedTsHost();
+	});
+
+	it("enableLayer3 + mocked Layer-3 LLM resolves the forcing fixture to 0 errors", async () => {
+		const events: LayerEvent[] = [];
+		const r = await runFullStack({
+			workspaceRoot: ws,
+			targetFiles: FILES,
+			llm: { provider: "anthropic", model: "claude-haiku-4-5", apiKey: "k", maxIterations: 1 },
+			enableLayer3: true,
+			onLayerEvent: (e) => events.push(e),
+			_callLLM: coordinatedLayer3LLM,
+		});
+
+		// The whole point: a single coordinated multi-file call drove the
+		// otherwise-non-convergent fixture to zero errors.
+		expect(r.passed).toBe(true);
+		expect(r.errorsAfterAllLayers).toBe(0);
+		expect(r.layer2).not.toBeNull();
+		expect(r.layer2!.stopReason).toBe("multiFileFixed");
+		expect(r.layer2!.layer3).toBeDefined();
+		expect(r.layer2!.layer3!.apply.applied).toBe(2); // both files edited
+
+		// Exactly one Layer-3 event, marked fixed.
+		const layer3Events = events.filter((e) => e.layer === 3);
+		expect(layer3Events.length).toBe(1);
+		expect(layer3Events[0].fixed).toBe(true);
+
+		// The coordinated edit really landed on disk in BOTH files.
+		expect(fs.readFileSync(path.join(ws, "lib/shared.ts"), "utf-8")).toContain("Value = number");
+		expect(fs.readFileSync(path.join(ws, "lib/consumer-str.ts"), "utf-8")).toContain("String(value)");
+	});
+
+	it("Layer 3 OFF by default: never fires, leaving the fixture unresolved (regression)", async () => {
+		const events: LayerEvent[] = [];
+		const r = await runFullStack({
+			workspaceRoot: ws,
+			targetFiles: FILES,
+			llm: { provider: "anthropic", model: "claude-haiku-4-5", apiKey: "k", maxIterations: 1 },
+			// enableLayer3 omitted → default OFF.
+			onLayerEvent: (e) => events.push(e),
+			_callLLM: coordinatedLayer3LLM,
+		});
+
+		// Without Layer 3 the forcing fixture cannot be fixed — identical to
+		// pre-T-4-4 behavior (Layer 2 single-file loop only).
+		expect(r.passed).toBe(false);
+		expect(r.errorsAfterAllLayers).toBeGreaterThan(0);
+		expect(r.layer2!.layer3).toBeUndefined();
+		expect(r.layer2!.stopReason).not.toBe("multiFileFixed");
+
+		// No Layer-3 event, and the LLM was never handed the multi-file prompt.
+		expect(events.some((e) => e.layer === 3)).toBe(false);
+		const calls = (coordinatedLayer3LLM as unknown as { mock: { calls: Array<[{ systemBlock: string }]> } }).mock.calls;
+		expect(calls.every(([arg]) => !arg.systemBlock.includes("span MULTIPLE files"))).toBe(true);
+
+		// Files left untouched (no coordinated edit applied).
+		expect(fs.readFileSync(path.join(ws, "lib/shared.ts"), "utf-8")).toContain("Value = string");
 	});
 });

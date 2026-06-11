@@ -27,7 +27,18 @@ import {
 	type SymbolBlastRadius,
 } from "./blastRadius.js";
 import { getTypeContext } from "./typeContext.js";
-import { SYSTEM_INSTRUCTIONS } from "./mendAgent.js";
+import {
+	SYSTEM_INSTRUCTIONS,
+	defaultLLMCall,
+	type LLMCall,
+	type LLMProvider,
+} from "./mendAgent.js";
+import {
+	applyEditBlocks,
+	parseEditBlocks,
+	type ApplyResult,
+	type EditBlock,
+} from "./applyEditBlock.js";
 
 /**
  * Multi-file framing prepended to the shared single-file instructions. The
@@ -174,4 +185,84 @@ export function buildMultiFileMendPrompt(context: MendContext): MultiFileMendPro
 	const userBlock = `tsc reports these errors across the blast radius:\n${diagLines.join("\n")}\n\nEmit a single coordinated set of SEARCH/REPLACE blocks (across as many files as needed) to resolve ALL of them together.`;
 
 	return { systemBlock, userBlock, blastRadius, affectedFiles };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Layer 3 — the mend call itself (T-4-4).
+//
+// ONE LLM call over the blast-radius prompt above, then a coalesced multi-file
+// SEARCH/REPLACE apply. The LLM is mocked in every test (SIGN-107); the real
+// paid validation is the manual T-4-7. Like `mendSingleFile`, the actual
+// provider call is injectable via `_callLLM` so the loop gate stays free.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MultiFileMendOptions {
+	context: MendContext;
+	llm: {
+		provider: LLMProvider;
+		model: string;
+		apiKey: string;
+	};
+	/** Compute and parse patches but skip writing to disk. Default false. */
+	dryRun?: boolean;
+	/** @internal — LLM call override. Tests inject a fake; real callers leave it. */
+	_callLLM?: LLMCall;
+}
+
+export interface MultiFileMendResult {
+	rawResponse: string;
+	blocks: EditBlock[];
+	apply: ApplyResult;
+	/**
+	 * Workspace-relative files the blast-radius prompt spanned. The caller
+	 * re-validates over this set (not just the originally-errored files) so it
+	 * can see an error migrating to another affected file — the blind spot that
+	 * makes single-file iteration non-convergent on the forcing fixture.
+	 */
+	affectedFiles: string[];
+	inputTokens: number;
+	outputTokens: number;
+	latencyMs: number;
+}
+
+/**
+ * Run the multi-file (Layer 3) mend: build the blast-radius prompt, make ONE
+ * LLM call spanning every affected file, parse the coordinated SEARCH/REPLACE
+ * response, and apply it across all files via `applyEditBlocks` (which already
+ * stacks blocks per file and handles multiple files in one pass).
+ */
+export async function multiFileMend(
+	opts: MultiFileMendOptions,
+): Promise<MultiFileMendResult> {
+	const { context, llm, dryRun = false, _callLLM = defaultLLMCall } = opts;
+
+	const prompt = buildMultiFileMendPrompt(context);
+
+	const startMs = Date.now();
+	const llmResult = await _callLLM({
+		systemBlock: prompt.systemBlock,
+		userBlock: prompt.userBlock,
+		provider: llm.provider,
+		model: llm.model,
+		apiKey: llm.apiKey,
+	});
+	const latencyMs = Date.now() - startMs;
+
+	const rawResponse = llmResult.text;
+	const blocks = parseEditBlocks(rawResponse);
+	const apply = applyEditBlocks({
+		workspaceRoot: context.workspaceRoot,
+		blocks,
+		dryRun,
+	});
+
+	return {
+		rawResponse,
+		blocks,
+		apply,
+		affectedFiles: prompt.affectedFiles,
+		inputTokens: llmResult.inputTokens,
+		outputTokens: llmResult.outputTokens,
+		latencyMs,
+	};
 }

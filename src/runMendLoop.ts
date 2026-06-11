@@ -23,9 +23,11 @@
  * needs the actual file changes.
  */
 
+import * as path from "node:path";
 import type { Diagnostic, LayerEvent, MendContext } from "./index.js";
 import { resetInProcessTscCache, runInProcessTsc } from "./validatorInProcess.js";
 import { mendSingleFile, type LLMCall, type LLMProvider, type MendSingleFileResult } from "./mendAgent.js";
+import { multiFileMend, type MultiFileMendResult } from "./multiFileMend.js";
 import { stubAndContinue, type AppliedStub } from "./stubAndContinue.js";
 import { detectLibraryMigrations } from "./libraryMigrations.js";
 
@@ -40,6 +42,14 @@ export interface RunMendLoopOptions {
 	maxIterations?: number;
 	/** Single dry-run pass — call LLM, parse, but don't write to disk. Default false. */
 	dryRun?: boolean;
+	/**
+	 * After the Layer 2 single-file loop exits with leftover errors, run ONE
+	 * Layer 3 multi-file mend: a single coordinated LLM call spanning the
+	 * blast radius (`findReferences`) of the surviving errors. Opt-in.
+	 * Default false. Ignored when `dryRun: true`. Sits between Layer 2 and
+	 * Layer 4 — if it clears every error, Layer 4 stubbing won't run.
+	 */
+	enableLayer3?: boolean;
 	/**
 	 * When the loop exits with leftover errors (stopReason !== "fixed"),
 	 * apply Layer 4 stub-and-continue: insert `// @ts-expect-error - tsfix: ...`
@@ -77,6 +87,7 @@ export type StopReason =
 	| "noProgress"
 	| "regressed"
 	| "maxIterations"
+	| "multiFileFixed"
 	| "stubbed";
 
 export interface RunMendLoopResult {
@@ -95,6 +106,11 @@ export interface RunMendLoopResult {
 	 * were in .d.ts files).
 	 */
 	stubs?: AppliedStub[];
+	/**
+	 * Layer 3 multi-file mend result. Present only when `enableLayer3: true`
+	 * was set AND the Layer 2 loop left errors for it to act on.
+	 */
+	layer3?: MultiFileMendResult;
 }
 
 const noopLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -160,7 +176,7 @@ function dominantErrorCode(diags: Diagnostic[]): number {
 export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoopResult> {
 	const {
 		context: rawContext, llm, maxIterations = 3, dryRun = false,
-		stubOnFailure = false, onLayerEvent, _callLLM,
+		enableLayer3 = false, stubOnFailure = false, onLayerEvent, _callLLM,
 	} = opts;
 	const startMs = Date.now();
 
@@ -271,6 +287,47 @@ export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoop
 		prevSig = newSig;
 	}
 
+	// Files to re-validate over after higher layers run. Layer 2 only ever
+	// touches `filesInScope`; Layer 3 spans the blast radius, so it widens
+	// this set with every affected file — otherwise a scoped re-check would go
+	// blind to an error the multi-file edit migrated to another file.
+	const revalidationFiles = new Set(filesInScope);
+
+	// Layer 3 — multi-file coordinated mend. ONE LLM call over the blast
+	// radius of the surviving errors. Runs only when Layer 2 left errors, the
+	// caller opted in, and we're not in dryRun. Sits before Layer 4 so a
+	// successful multi-file fix preempts stubbing.
+	let layer3: MultiFileMendResult | undefined;
+	if (enableLayer3 && !dryRun && currentDiags.length > 0) {
+		const layer3Context: MendContext = {
+			...context,
+			diagnostics: currentDiags,
+			erroredFiles: Array.from(new Set(currentDiags.map((d) => d.file))),
+		};
+		const mend = await multiFileMend({ context: layer3Context, llm, _callLLM });
+		totalInputTokens += mend.inputTokens;
+		totalOutputTokens += mend.outputTokens;
+		layer3 = mend;
+
+		for (const f of mend.affectedFiles) {
+			revalidationFiles.add(path.isAbsolute(f) ? f : path.join(context.workspaceRoot, f));
+		}
+		const postL3 = refreshDiagnostics(context.workspaceRoot, Array.from(revalidationFiles));
+
+		onLayerEvent?.({
+			layer: 3,
+			errorCode: dominantErrorCode(currentDiags),
+			fixed: postL3.length === 0,
+			latencyMs: mend.latencyMs,
+			ts: Date.now(),
+		});
+
+		if (postL3.length === 0) {
+			stopReason = "multiFileFixed";
+		}
+		currentDiags = postL3;
+	}
+
 	// Layer 4 — stub-and-continue. Only runs when the LLM loop didn't
 	// reach `fixed` AND the caller opted in AND we're not in dryRun.
 	let stubs: AppliedStub[] | undefined;
@@ -296,8 +353,10 @@ export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoop
 				}
 			}
 		}
-		// Re-validate so diagnosticsAfter reflects the post-stub state.
-		const postStubDiags = refreshDiagnostics(context.workspaceRoot, filesInScope);
+		// Re-validate so diagnosticsAfter reflects the post-stub state. Use the
+		// (possibly Layer-3-widened) scope so stubbed errors outside the original
+		// file set are accounted for.
+		const postStubDiags = refreshDiagnostics(context.workspaceRoot, Array.from(revalidationFiles));
 		if (postStubDiags.length === 0) {
 			stopReason = "stubbed";
 		}
@@ -314,5 +373,6 @@ export async function runMendLoop(opts: RunMendLoopOptions): Promise<RunMendLoop
 		totalOutputTokens,
 		totalLatencyMs: Date.now() - startMs,
 		...(stubs !== undefined ? { stubs } : {}),
+		...(layer3 !== undefined ? { layer3 } : {}),
 	};
 }
