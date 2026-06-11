@@ -29,7 +29,9 @@
       "id": "T-4-2",
       "title": "Forcing-function fixture + deterministic non-convergence proof (the PROVE gate)",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
+      "outcome": "Layer 3 JUSTIFIED — per-file iteration provably cannot converge. fixtures/forcing-multifile-ripple oscillates with period 2: shared.ts `type Value` is constrained to incompatible types by consumer-num.ts (TS2362, needs number) and consumer-str.ts (TS2339, needs string). src/multiFileMend.test.ts drives a greedy single-file fixer with whole-workspace re-validation and proves the diagnostic-signature set walks {consumer-num:TS2362}↔{consumer-str:TS2339} forever, never reaching zero (so runMendLoop's stop conditions fixed/noProgress/regressed never fire → maxIterations). T-4-3/T-4-4 proceed (NOT skipped).",
       "acceptance_criteria": [
         "fixtures/forcing-multifile-ripple/ exists (mustPass:false, report-only) modeling a cross-file ripple where the locally-obvious single-file fix necessarily introduces an error in another file (e.g. a mutual rename / signature change that greedy per-file fixing oscillates on)",
         "A deterministic test (src/multiFileMend.test.ts or blastRadius.test.ts) simulates per-file LOCAL fixes via a mock single-file fixer and asserts the diagnostic-signature set does NOT monotonically reach zero (oscillates or regresses) — establishing that runMendLoop's per-file iteration cannot converge, i.e. Layer 3 is justified",

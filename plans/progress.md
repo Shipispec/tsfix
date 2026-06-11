@@ -441,3 +441,62 @@ CANNOT converge on a forcing fixture before T-4-3/T-4-4 build Layer 3; else defe
 not yet wired into any runtime path).
 
 ---
+
+### Task: T-4-2 - Forcing-function fixture + non-convergence proof (the PROVE gate)
+
+**Outcome: Layer 3 is JUSTIFIED.** Per-file iteration provably cannot converge on
+the forcing fixture, so T-4-3/T-4-4 proceed (NOT skipped per SIGN-106).
+
+**What was implemented:**
+- `fixtures/forcing-multifile-ripple/` (report-only, `mustPass:false`): a single
+  contested type drives a period-2 oscillation.
+  - `lib/shared.ts` — `export type Value = string; export declare const value: Value;`
+    (`declare const` = no initializer, so flipping `Value`'s type never makes THIS
+    file error; the contradiction lives purely in the two consumers).
+  - `lib/consumer-num.ts` — `value * 2` → **TS2362** unless `Value = number`.
+  - `lib/consumer-str.ts` — `value.toUpperCase()` → **TS2339** unless `Value = string`.
+  - `expected.json`: `errorsBefore:1`, `errorsAfterMax:1`, `lspFixesApplied{Min,Max}:0`,
+    `mustPass:false`. NO `costUsdMax`/`expectedErrorCode` markers → stays on the
+    free deterministic gate (Layers 0/1 have no safe quick-fix → abstain → 1 error
+    survives → "○ met contract", non-gating).
+  - `README.md` documents the contradiction + the 2-cycle.
+- `src/multiFileMend.test.ts` (2 tests): copies the fixture to a temp workspace
+  (symlinked workspace typescript, SIGN-102), then drives a **greedy mock
+  single-file fixer** (retype `shared.ts` toward whichever consumer errors —
+  TS2362→number, TS2339→string) with **whole-workspace re-validation** through
+  `runInProcessTsc`. Asserts over 6 iterations: error count never hits 0; exactly
+  two alternating signature states; and that this maps onto runMendLoop's stop
+  conditions (`fixed`/`noProgress`/`regressed` can never fire → `maxIterations`).
+
+**Why whole-workspace re-validation (the honest subtlety):** `runInProcessTsc`'s
+`generatedFiles` *filters* reported diagnostics; the program is always fully
+checked. `runMendLoop` computes `filesInScope` ONCE from the initial diagnostics
+(here just `consumer-num.ts`), so its scoped re-validation would go BLIND to the
+error migrating to `consumer-str.ts` and falsely report `fixed` while the project
+is still broken. That blind spot is a *second* independent reason per-file
+iteration fails — but to prove genuine non-convergence (not just a false
+positive) the test re-validates all files, the semantics tsc reports for the
+project. The oscillation is real at the program level.
+
+**Learnings:**
+- A forcing function needs a *shared* declaration with mutually-exclusive
+  constraints. Single-file typos/renames (synthetic-multifile-ripple) always
+  converge because each fix is independent and surfaces the next error
+  monotonically. Oscillation requires that the locally-obvious fix for file A
+  necessarily re-breaks file B via a symbol they both own.
+- `declare const` is the trick that keeps the shared file itself error-free while
+  its type is flipped, so the diagnostic set is a clean period-2 cycle with
+  exactly one error at a time (no noise from initializer mismatches).
+- Verified the real codes/oscillation with a throwaway `tsx` script before
+  writing the test: `Value=string`→`{consumer-num:TS2362}`,
+  `Value=number`→`{consumer-str:TS2339}`, back to string → TS2362.
+
+**Files changed:** `fixtures/forcing-multifile-ripple/{lib/shared.ts,lib/consumer-num.ts,lib/consumer-str.ts,tsconfig.json,expected.json,README.md}`
+(new), `src/multiFileMend.test.ts` (new).
+
+**Verification:** `npm run check-types` clean · `npm run test` 168/168 passed
+(18 files; +2 new forcing-proof tests; same 3 benign WSL2 `onTaskUpdate`
+RPC-timeout "errors") · `npm run benchmark` exit 0, gate 7/7 (no regression),
+forcing-multifile-ripple reported `○ met contract` (1→1, report-only).
+
+---

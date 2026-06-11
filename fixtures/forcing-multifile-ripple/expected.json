@@ -1,0 +1,8 @@
+{
+	"description": "Forcing function for Phase 4 Layer 3 (T-4-2 PROVE gate). shared.ts declares `type Value` consumed under INCOMPATIBLE constraints by two files: consumer-num.ts needs `number` (arithmetic, TS2362), consumer-str.ts needs `string` (.toUpperCase, TS2339). A greedy per-file fixer that retypes the shared declaration toward whichever consumer errors OSCILLATES between {consumer-num:TS2362} (Value=string) and {consumer-str:TS2339} (Value=number) and never reaches zero — proving per-file iteration cannot converge and a coordinated multi-file mend (Layer 3) is required. Report-only (mustPass:false): Layer 0/1 have no safe quick-fix for these type errors, so the loop abstains and 1 error survives. No costUsdMax/expectedErrorCode markers, so it stays on the free deterministic gate.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 1,
+	"lspFixesAppliedMin": 0,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false
+}
