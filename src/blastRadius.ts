@@ -218,6 +218,98 @@ function resolveSymbolDeclaration(
 }
 
 /**
+ * Resolve the VALUE-level symbol an error identifier denotes (the variable,
+ * function, or import binding itself — not its type). This is the anchor that
+ * catches value-flow ripples the type walk misses: in the forcing fixture
+ * `value * 2` errors with TS2362 whose type is the primitive `string`, so
+ * `resolveSymbolDeclaration` finds no user-land *type*. But the `value` const
+ * is a user symbol whose references span every consumer — exactly the
+ * cross-file reach a multi-file mend must see.
+ *
+ * Narrow on purpose: only fires when the error node is itself an Identifier, so
+ * it never adds noise for errors that point at object literals / expressions
+ * (e.g. TS2741 points at the declaration name, handled by the type walk). Alias
+ * import bindings are resolved to their real declaration so two consumers'
+ * imports of the same symbol collapse to one blast-radius entry.
+ */
+function resolveValueSymbol(
+	checker: ts.TypeChecker,
+	errorNode: ts.Node,
+): { declFileAbs: string; declPos: number; symbolName: string } | undefined {
+	if (!ts.isIdentifier(errorNode)) return undefined;
+	let symbol: ts.Symbol | undefined;
+	try {
+		symbol = checker.getSymbolAtLocation(errorNode);
+	} catch {
+		return undefined;
+	}
+	if (!symbol) return undefined;
+	if (symbol.flags & ts.SymbolFlags.Alias) {
+		try {
+			symbol = checker.getAliasedSymbol(symbol);
+		} catch {
+			// Not actually aliased / unresolvable — keep the local binding.
+		}
+	}
+	let declarations: ts.Declaration[] | undefined;
+	try {
+		declarations = symbol.getDeclarations();
+	} catch {
+		return undefined;
+	}
+	if (!declarations || declarations.length === 0) return undefined;
+	const nonLib = declarations.find((d) => !isLibFile(d.getSourceFile().fileName));
+	if (!nonLib) return undefined;
+	const named = nonLib as ts.Declaration & { name?: ts.Node };
+	const declNameNode = named.name ?? nonLib;
+	const sf = declNameNode.getSourceFile();
+	return {
+		declFileAbs: sf.fileName,
+		declPos: declNameNode.getStart(sf),
+		symbolName: symbol.getName() ?? "(unnamed)",
+	};
+}
+
+/** Gather every reference to the symbol anchored at (fileAbs, pos), workspace-
+ *  relative + 1-indexed, deduped by (file,line,col) and sorted. */
+function collectReferences(
+	service: ts.LanguageService,
+	program: ts.Program,
+	workspaceRoot: string,
+	fileAbs: string,
+	pos: number,
+): BlastRadiusReference[] {
+	let referenced: readonly ts.ReferencedSymbol[] | undefined;
+	try {
+		referenced = service.findReferences(fileAbs, pos);
+	} catch {
+		referenced = undefined;
+	}
+	const refSet = new Map<string, BlastRadiusReference>();
+	for (const rs of referenced ?? []) {
+		for (const entry of rs.references) {
+			const refSf = program.getSourceFile(entry.fileName);
+			if (!refSf) continue;
+			const lc = refSf.getLineAndCharacterOfPosition(entry.textSpan.start);
+			const ref: BlastRadiusReference = {
+				file: path.relative(workspaceRoot, entry.fileName) || entry.fileName,
+				line: lc.line + 1,
+				col: lc.character + 1,
+			};
+			refSet.set(`${ref.file}:${ref.line}:${ref.col}`, ref);
+		}
+	}
+	return Array.from(refSet.values()).sort(
+		(a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.col - b.col,
+	);
+}
+
+/** Count distinct files in a reference set. */
+function distinctFiles(refs: readonly BlastRadiusReference[]): number {
+	return new Set(refs.map((r) => r.file)).size;
+}
+
+/**
  * Compute the cross-file blast radius for each surviving diagnostic's symbol.
  *
  * For every diagnostic we resolve the symbol behind the error, then ask the
@@ -269,49 +361,52 @@ export function computeBlastRadius(opts: BlastRadiusOptions): BlastRadiusResult 
 			}
 
 			const errorNode = getNodeAtPosition(sourceFile, position);
-			const resolved = resolveSymbolDeclaration(checker, errorNode);
-			if (!resolved) continue;
 
-			const { declNameNode, symbolName } = resolved;
-			const declSourceFile = declNameNode.getSourceFile();
-			const declFileAbs = declSourceFile.fileName;
-			const namePos = declNameNode.getStart(declSourceFile);
-
-			// Dedupe by declaration site — two errors on the same symbol collapse.
-			const key = `${declFileAbs}:${namePos}`;
-			if (bySymbol.has(key)) continue;
-
-			let referenced: readonly ts.ReferencedSymbol[] | undefined;
-			try {
-				referenced = service.findReferences(declFileAbs, namePos);
-			} catch {
-				referenced = undefined;
-			}
-
-			const refSet = new Map<string, BlastRadiusReference>();
-			for (const rs of referenced ?? []) {
-				for (const entry of rs.references) {
-					const refSf = program.getSourceFile(entry.fileName);
-					if (!refSf) continue;
-					const lc = refSf.getLineAndCharacterOfPosition(entry.textSpan.start);
-					const ref: BlastRadiusReference = {
-						file: path.relative(workspaceRoot, entry.fileName) || entry.fileName,
-						line: lc.line + 1,
-						col: lc.character + 1,
-					};
-					refSet.set(`${ref.file}:${ref.line}:${ref.col}`, ref);
+			// (1) Type-level anchor — the declaring type behind the error (e.g. an
+			//     interface). Spans every file that names that type.
+			const typeResolved = resolveSymbolDeclaration(checker, errorNode);
+			if (typeResolved) {
+				const { declNameNode, symbolName } = typeResolved;
+				const declSourceFile = declNameNode.getSourceFile();
+				const declFileAbs = declSourceFile.fileName;
+				const namePos = declNameNode.getStart(declSourceFile);
+				// Dedupe by declaration site — two errors on the same symbol collapse.
+				const key = `${declFileAbs}:${namePos}`;
+				if (!bySymbol.has(key)) {
+					bySymbol.set(key, {
+						symbol: symbolName,
+						declarationFile: path.relative(workspaceRoot, declFileAbs) || declFileAbs,
+						references: collectReferences(service, program, workspaceRoot, declFileAbs, namePos),
+					});
 				}
 			}
 
-			const references = Array.from(refSet.values()).sort(
-				(a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.col - b.col,
-			);
-
-			bySymbol.set(key, {
-				symbol: symbolName,
-				declarationFile: path.relative(workspaceRoot, declFileAbs) || declFileAbs,
-				references,
-			});
+			// (2) Value-level anchor — the variable / import binding the error
+			//     identifier denotes. Catches value-flow ripples the type walk
+			//     misses (e.g. `value * 2` on a primitive type). Only kept when its
+			//     references genuinely span MORE THAN ONE file: a single-file symbol
+			//     needs no multi-file coordination, so it is not a blast radius.
+			const valueResolved = resolveValueSymbol(checker, errorNode);
+			if (valueResolved) {
+				const { declFileAbs, declPos, symbolName } = valueResolved;
+				const key = `${declFileAbs}:${declPos}`;
+				if (!bySymbol.has(key)) {
+					const references = collectReferences(
+						service,
+						program,
+						workspaceRoot,
+						declFileAbs,
+						declPos,
+					);
+					if (distinctFiles(references) > 1) {
+						bySymbol.set(key, {
+							symbol: symbolName,
+							declarationFile: path.relative(workspaceRoot, declFileAbs) || declFileAbs,
+							references,
+						});
+					}
+				}
+			}
 		}
 
 		const symbols = Array.from(bySymbol.values()).sort((a, b) =>

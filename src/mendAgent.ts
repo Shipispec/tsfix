@@ -77,7 +77,9 @@ export type LLMCall = (params: {
 	apiKey: string;
 }) => Promise<{ text: string; inputTokens: number; outputTokens: number }>;
 
-const SYSTEM_INSTRUCTIONS = `You are a TypeScript code-repair tool. You receive a TypeScript file with one or more compiler errors and resolve them.
+/** @internal — exported so Layer 3's multi-file prompt reuses the identical
+ *  SEARCH/REPLACE format + anti-pattern rules (single source of truth). */
+export const SYSTEM_INSTRUCTIONS = `You are a TypeScript code-repair tool. You receive a TypeScript file with one or more compiler errors and resolve them.
 
 Output ONLY SEARCH/REPLACE blocks. No prose, no explanations, no XML wrappers.
 

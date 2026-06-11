@@ -39,9 +39,10 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Diagnostic } from "./index.js";
+import type { Diagnostic, MendContext } from "./index.js";
 import { resetInProcessTscCache, runInProcessTsc } from "./validatorInProcess.js";
 import { resetSharedTsHost } from "./sharedTsHost.js";
+import { buildMultiFileMendPrompt } from "./multiFileMend.js";
 
 const require = createRequire(import.meta.url);
 const noopLogger = { info: () => {}, warn: () => {}, error: () => {} };
@@ -185,6 +186,102 @@ describe("forcing-multifile-ripple — per-file iteration cannot converge (T-4-2
 				sigSets[i].size > sigSets[i - 1].size,
 				"set never grows → 'regressed' never fires",
 			).toBe(false);
+		}
+	});
+});
+
+describe("buildMultiFileMendPrompt — folds the blast radius into one prompt (T-4-3)", () => {
+	let ws: string;
+
+	beforeEach(() => {
+		ws = setupWorkspace();
+		resetSharedTsHost();
+	});
+
+	afterEach(() => {
+		fs.rmSync(ws, { recursive: true, force: true });
+		resetSharedTsHost();
+	});
+
+	function contextFor(ws: string, diags: Diagnostic[]): MendContext {
+		const erroredFiles = Array.from(
+			new Set(diags.map((d) => path.join(ws, d.file))),
+		);
+		return { workspaceRoot: ws, diagnostics: diags, erroredFiles };
+	}
+
+	it("includes every blast-radius file and reference site for the forcing fixture", () => {
+		const diags = refresh(ws);
+		expect(diags.length).toBeGreaterThan(0);
+
+		const prompt = buildMultiFileMendPrompt(contextFor(ws, diags));
+
+		// The blast radius must resolve to the contested `value` symbol spanning
+		// all three files — the whole reason a single-file mend can't converge.
+		expect(prompt.blastRadius.symbols.length).toBe(1);
+		expect(prompt.blastRadius.symbols[0].symbol).toBe("value");
+
+		// Every file in the blast radius is an affected file the prompt carries.
+		for (const f of FILES) {
+			expect(prompt.affectedFiles).toContain(f);
+		}
+
+		// The system block embeds each affected file's path AND its content.
+		for (const f of FILES) {
+			expect(prompt.systemBlock).toContain(`### file: ${f}`);
+		}
+		expect(prompt.systemBlock).toContain("export type Value");
+		expect(prompt.systemBlock).toContain("value.toUpperCase()");
+		expect(prompt.systemBlock).toContain("value * 2");
+
+		// Every reference site the blast radius found is listed verbatim — derived
+		// from the result itself so the assertion can't drift from the computation.
+		const sites = new Set<string>();
+		for (const sym of prompt.blastRadius.symbols) {
+			for (const ref of sym.references) {
+				sites.add(`${ref.file}(${ref.line},${ref.col})`);
+			}
+		}
+		expect(sites.size).toBeGreaterThanOrEqual(5);
+		for (const site of sites) {
+			expect(prompt.systemBlock).toContain(site);
+		}
+
+		// Reference files span more than one consumer — proving the prompt sees
+		// BOTH sides of the contradiction (consumer-num AND consumer-str).
+		const refFiles = new Set(
+			prompt.blastRadius.symbols.flatMap((s) => s.references.map((r) => r.file)),
+		);
+		expect(refFiles).toContain("lib/consumer-num.ts");
+		expect(refFiles).toContain("lib/consumer-str.ts");
+		expect(refFiles).toContain("lib/shared.ts");
+
+		// The user block carries the surviving diagnostic(s) for this iteration.
+		expect(prompt.userBlock).toContain("TS2362");
+		expect(prompt.userBlock).toContain("lib/consumer-num.ts");
+		// And it asks for ONE coordinated multi-file edit set.
+		expect(prompt.userBlock).toMatch(/SEARCH\/REPLACE/);
+	});
+
+	it("still includes the erroring file when no cross-file symbol resolves", () => {
+		// A purely local primitive mismatch: blast radius is empty, but the prompt
+		// must still hand the model the file the error lives in.
+		const localWs = setupWorkspace();
+		try {
+			fs.writeFileSync(
+				path.join(localWs, "lib/shared.ts"),
+				"export type Value = string;\nexport declare const value: Value;\nexport const bad: number = 'nope';\n",
+			);
+			resetSharedTsHost();
+			const diags = refresh(localWs).filter((d) => d.code === "TS2322");
+			expect(diags.length).toBe(1);
+
+			const prompt = buildMultiFileMendPrompt(contextFor(localWs, diags));
+			expect(prompt.affectedFiles).toContain("lib/shared.ts");
+			expect(prompt.systemBlock).toContain("### file: lib/shared.ts");
+			expect(prompt.userBlock).toContain("TS2322");
+		} finally {
+			fs.rmSync(localWs, { recursive: true, force: true });
 		}
 	});
 });

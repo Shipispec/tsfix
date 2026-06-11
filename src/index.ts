@@ -349,6 +349,19 @@ export type {
 	LLMProvider,
 } from "./mendAgent.js";
 
+// Layer 3 — multi-file LLM mend (blast-radius SEARCH/REPLACE). Prompt builder
+// is deterministic + LLM-free; the mend call itself lands in T-4-4.
+export { computeBlastRadius } from "./blastRadius.js";
+export type {
+	BlastRadiusOptions,
+	BlastRadiusResult,
+	SymbolBlastRadius,
+	BlastRadiusReference,
+} from "./blastRadius.js";
+
+export { buildMultiFileMendPrompt } from "./multiFileMend.js";
+export type { MultiFileMendPrompt } from "./multiFileMend.js";
+
 export { runMendLoop } from "./runMendLoop.js";
 export type {
 	RunMendLoopOptions,

@@ -500,3 +500,84 @@ RPC-timeout "errors") · `npm run benchmark` exit 0, gate 7/7 (no regression),
 forcing-multifile-ripple reported `○ met contract` (1→1, report-only).
 
 ---
+
+### Task: T-4-3 - Multi-file mend prompt builder (deterministic, LLM mocked)
+
+**What was implemented:**
+- Added `src/multiFileMend.ts`: `buildMultiFileMendPrompt(context: MendContext)`
+  → `{ systemBlock, userBlock, blastRadius, affectedFiles }`. Folds the T-4-1
+  blast radius into ONE prompt: a `### blast-radius` map (per symbol:
+  declaration + every `file(line,col)` reference site), then `### affected files`
+  with the FULL content of every file in the radius ∪ the errored files, then
+  reused `getTypeContext` declarations, then the optional task headline. The user
+  block carries the surviving diagnostics and asks for a single coordinated
+  multi-file SEARCH/REPLACE set. Pure: reads files + computes references, no LLM,
+  no writes (SIGN-107).
+- **Reuses Layer 2's `SYSTEM_INSTRUCTIONS`** (exported from `mendAgent.ts`) so the
+  SEARCH/REPLACE format + anti-pattern rules are single-sourced; a
+  `MULTI_FILE_PREAMBLE` adds only the cross-file coordination framing.
+- Exported `computeBlastRadius` + blast-radius types and
+  `buildMultiFileMendPrompt`/`MultiFileMendPrompt` from `src/index.ts`.
+
+**Critical enhancement to `src/blastRadius.ts` (T-4-1) — value-symbol resolution:**
+The forcing fixture's blast radius was EMPTY under T-4-1's type-only walk:
+`value * 2` errors with TS2362 whose type is the primitive `string`, so
+`getTypeAtLocation` finds no user-land *type* symbol, and the prompt would never
+have seen consumer-str.ts (defeating the whole point of Layer 3). Added
+`resolveValueSymbol`: when the error node is itself an Identifier, resolve its
+VALUE symbol via `getSymbolAtLocation` (resolving import aliases to the real
+declaration) and `findReferences` there. **Guard: the value entry is kept only
+when its references span MORE THAN ONE file** — a single-file symbol needs no
+multi-file coordination, so it is not a blast radius. That filter is exactly what
+keeps T-4-1's three tests byte-identical:
+  - forcing `value` → consumer-num + consumer-str + shared (3 files) → **kept**.
+  - User-test `c` / primitive-test `x` → single file → **filtered** (so the
+    `length===1` and `symbols:[]` assertions are unchanged).
+The type-resolution path is untouched (verified: User TS2741 still yields exactly
+`User`). Refactored the reference-collection into a shared `collectReferences`
+helper; type and value anchors both run per diagnostic, deduped by declaration
+site.
+
+**Why this lives in `blastRadius.ts` (a T-4-1 file) and not the builder:**
+`computeBlastRadius`'s stated job is "the FULL set of places that touch the
+symbol behind the error". Under-resolving value-flow errors was a gap in that
+contract; the prompt builder is the consumer that exposed it. Centralizing the
+fix keeps `findReferences` logic in one place (the builder just renders the
+result). Additive + green T-4-1 tests = no re-opening of T-4-1.
+
+**Files changed:** `src/multiFileMend.ts` (new), `src/blastRadius.ts`
+(value-symbol resolution), `src/mendAgent.ts` (export `SYSTEM_INSTRUCTIONS`),
+`src/index.ts` (exports), `src/multiFileMend.test.ts` (+2 builder tests).
+
+**Test design (2 builder tests, driven through `runInProcessTsc`):**
+1. Forcing fixture: asserts blast radius resolves to `value` (1 symbol), every
+   `FILES` entry is an affected file, the system block embeds each `### file:`
+   path + content (`export type Value`, `value.toUpperCase()`, `value * 2`),
+   every `file(line,col)` site **derived from the result itself** (≥5) appears
+   verbatim (so the assertion can't drift from the computation), ref files span
+   BOTH consumers + shared, and the user block carries TS2362 + the
+   SEARCH/REPLACE ask.
+2. Empty-blast-radius fallback: a purely-local TS2322 (`const bad: number =
+   'nope'`) resolves no cross-file symbol, but the prompt still includes the
+   erroring file — proving Layer 3 degrades gracefully to single-file content.
+
+**Learnings:**
+- The blast radius for a value-flow ripple anchors on the VALUE symbol
+  (`getSymbolAtLocation` + alias resolution), not its type. The two anchors are
+  complementary: type-anchor catches interface/shape ripples (User), value-anchor
+  catches variable/import ripples (value). Running both per diagnostic, deduped by
+  declaration site, is the complete picture.
+- The "references span >1 file" filter is the principled definition of a *blast
+  radius*: it is precisely the symbols whose fix requires touching multiple files.
+  It doubles as the compatibility guard for T-4-1's existing tests.
+
+**Next (T-4-4):** `multiFileMend()` — ONE mocked LLM call over this prompt,
+coalesced multi-file `applyEditBlocks`, wired as opt-in Layer 3 (OFF by default)
+between Layers 2 and 4; runFullStack test resolves the forcing fixture to 0.
+
+**Verification:** `npm run check-types` clean · `npm run test` 170/170 passed
+(18 files; +2 new builder tests; same 3 benign WSL2 `onTaskUpdate` RPC-timeout
+"errors") · `npm run benchmark` exit 0, gate 7/7 (no regression),
+forcing-multifile-ripple still `○ met contract` (1→1, report-only).
+
+---

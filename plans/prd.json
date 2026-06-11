@@ -44,7 +44,8 @@
       "id": "T-4-3",
       "title": "Multi-file mend prompt builder (deterministic, LLM mocked)",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
       "acceptance_criteria": [
         "A builder (e.g. buildMultiFileMendPrompt in src/multiFileMend.ts) folds the T-4-1 blast-radius set into a single prompt: every affected file + all reference sites grouped by symbol, reusing typeContext where useful",
         "Unit tests assert the prompt contains every blast-radius file and reference site for the T-4-2 forcing fixture (no real LLM)",
