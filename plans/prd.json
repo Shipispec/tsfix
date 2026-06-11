@@ -72,7 +72,8 @@
       "id": "T-4-5",
       "title": "Extract PRICING to src/pricing.ts (single source) — resolves index.ts:451 TODO",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
       "acceptance_criteria": [
         "src/pricing.ts is the single PRICING table + costUsd() source; src/index.ts and cli/run-stack.ts import it instead of duplicating the table",
         "No duplicated PRICING literal remains in index.ts or cli/run-stack.ts",

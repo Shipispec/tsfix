@@ -657,3 +657,40 @@ T-4-7 stays skipped (manual paid validation). Layer 3's mocked path is proven;
 T-4-7 is the real-model confirmation.
 
 ---
+
+### Task: T-4-5 - Extract PRICING to src/pricing.ts (single source)
+
+**What was implemented:**
+- Added `src/pricing.ts`: the single `PRICING` table + `costUsd()` source. Carries
+  the fuller provenance comment (snapshot 2026-05-16, the per-provider pricing
+  pages, the unknown-pair→0 behavior) that previously only lived in
+  `cli/run-stack.ts`.
+- `src/index.ts`: removed the duplicated `PRICING` literal + private `costUsd`
+  (and the `index.ts:451` TODO) — now `import { costUsd } from "./pricing.js"`.
+  The single call site (`runFullStack`'s `totalCostUsd`) is unchanged.
+- `cli/run-stack.ts`: removed its `PRICING` literal + private `estimateCostUsd` —
+  now `import { PRICING, costUsd as estimateCostUsd } from "../src/pricing.js"`.
+  The alias keeps both call sites byte-identical: the unknown-model warning
+  branch (`!PRICING[...]`) and the `estimateCostUsd(...)` cost call. `PRICING` is
+  still imported by the CLI because it needs the table directly for that warning,
+  not just the cost function.
+
+**Why alias rather than rename call sites:** `estimateCostUsd` and the
+library-side `costUsd` were identical bodies under different names. Re-exporting
+the one source under the CLI's existing local name is a zero-diff dedup — no
+behavior change, no churn in the CLI's two usages.
+
+**Files changed:** `src/pricing.ts` (new), `src/index.ts`, `cli/run-stack.ts`.
+
+**Note on the "benchmark shares it too" framing:** the benchmark (`npm run
+benchmark`) is the free deterministic gate and never computes USD cost (no LLM),
+so it has no PRICING copy to dedup — the duplication was only index.ts ↔
+run-stack.ts, and both now point at `src/pricing.ts`. No duplicated PRICING
+literal remains anywhere (`grep -n PRICING src cli` → only `pricing.ts` defines it).
+
+**Verification:** `npm run check-types` clean · `npm run test` 172/172 passed
+(18 files; same 2 benign WSL2 `onTaskUpdate` RPC-timeout "errors") ·
+`npm run benchmark` exit 0, gate 7/7 (no regression — pure refactor, no behavior
+change).
+
+---
