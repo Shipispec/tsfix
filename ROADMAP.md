@@ -309,20 +309,20 @@ Scope note: only lib `.d.ts` files are shared, not the `node_modules` dependency
 
 ---
 
-## Phase 4 — Layer 3 (multi-file mend), prove-then-build
+## Phase 4 — Layer 3 (multi-file mend), prove-then-build ✅ (2026-06-11, deterministic half)
 
-**Goal:** Close the last layer gap — multi-file LLM mend via `findReferences()` blast-radius — **but only if it's proven necessary.** Layers 0/1/2/4 already ship; Layer 3 is the one piece mentioned-but-not-built. See ARCHITECTURE.md §13 for the full design.
+**Goal:** Close the last layer gap — multi-file LLM mend via `findReferences()` blast-radius — **but only if it's proven necessary.** Layers 0/1/2/4 already ship; Layer 3 was the one piece mentioned-but-not-built. See ARCHITECTURE.md §13 for the full design and outcome.
 
-The discipline (from `docs/internal/STATUS.md`'s blocker — *"synthetic ripple fixtures so far converge via iteration; we don't have a forcing function yet"*): Layer 2's per-file iteration already collapses most multi-file ripples, so build Layer 3 only after a fixture proves iteration can't converge. The unattended loop builds the **deterministic half** (blast-radius, prompt builder, multi-file apply, wiring) with the LLM **mocked**; real paid validation is a manual step (SIGN-104).
+**Outcome: the gate cleared — Layer 3 is justified and shipped (opt-in, off by default).** The discipline (from `docs/internal/STATUS.md`'s blocker — *"synthetic ripple fixtures so far converge via iteration; we don't have a forcing function yet"*): build Layer 3 only after a fixture proves iteration can't converge. T-4-2 produced exactly that — `fixtures/forcing-multifile-ripple/` oscillates with **period 2** (`{consumer-num:TS2362} ↔ {consumer-str:TS2339}`) because a single contested `type Value` is constrained to incompatible types by two consumers, so greedy per-file fixing never reaches zero. The unattended loop then built the **deterministic half** (blast-radius, prompt builder, multi-file apply, wiring) with the LLM **mocked**; real paid validation is the manual, still-pending T-4-7 (SIGN-104).
 
 Tasks (`plans/prd.json`):
-- **T-4-1** — `src/blastRadius.ts`: deterministic `findReferences()` blast-radius computation. No LLM. Independently useful.
-- **T-4-2** *(the gate)* — `fixtures/forcing-multifile-ripple/` + a deterministic test proving per-file iteration cannot converge. If it converges, Layer 3 is **deferred** and T-4-3/T-4-4 are skipped (SIGN-106).
-- **T-4-3** — multi-file mend prompt builder (folds the blast radius into one prompt; LLM mocked).
-- **T-4-4** — `multiFileMend()` + wiring as opt-in Layer 3 (off by default; benchmark stays 14/14; disabled path byte-identical).
-- **T-4-5** — extract `PRICING` to `src/pricing.ts` (single source; resolves the `index.ts:451` TODO).
-- **T-4-6** — docs refresh (this file + ARCHITECTURE.md §2/§13).
-- **T-4-7** *(manual, skipped)* — paid end-to-end LLM validation of Layer 3 against the forcing fixture.
+- **T-4-1** ✅ — `src/blastRadius.ts`: deterministic `findReferences()` blast-radius (type-anchor + value-symbol anchor; keeps only symbols spanning >1 file). No LLM. Independently useful.
+- **T-4-2** ✅ *(the gate — passed)* — `fixtures/forcing-multifile-ripple/` + a deterministic test (`src/multiFileMend.test.ts`) proving per-file iteration oscillates and cannot converge → Layer 3 justified, T-4-3/T-4-4 proceeded (not skipped).
+- **T-4-3** ✅ — `buildMultiFileMendPrompt()` folds the blast radius into one prompt (reuses Layer 2's `SYSTEM_INSTRUCTIONS` + a `MULTI_FILE_PREAMBLE`); LLM mocked.
+- **T-4-4** ✅ — `multiFileMend()` + wiring as opt-in Layer 3 (`enableLayer3`, off by default) between Layers 2 and 4; widened re-validation scope; benchmark stays 7/7 gate; disabled path byte-identical. Mocked `runFullStack` test drives the forcing fixture to 0 errors.
+- **T-4-5** ✅ — extracted `PRICING` to `src/pricing.ts` (single source; resolved the `index.ts:451` TODO).
+- **T-4-6** ✅ — docs refresh (this file + ARCHITECTURE.md §2/§13).
+- **T-4-7** *(manual, skipped — pending)* — paid end-to-end LLM validation of Layer 3 against the forcing fixture; flip the fixture's `mustPass:true` if a real model resolves it in one multi-file call.
 
 ---
 
@@ -364,6 +364,6 @@ Phases are ordered, not time-bound. Effort estimates omitted because the cadence
 | **3a** | Telemetry + unified result | ✅ 2026-05-19 (v0.6.1) — `onLayerEvent` callback + `runFullStack`/`RunFullStackResult` shipped |
 | **3c** | Shared lib-file parse (perf) | ✅ 2026-06-10 — shared `DocumentRegistry`; Layer-0 cold lib-load 393.7 ms → 38.3 ms (−90%), benchmark still 14/14 |
 | **3b** | Real-failure fixture pipeline | ✅ tooling 2026-06-10 (T-3b-1/2/3 — `fixtures/REAL.md`, `capture-fixture.mjs` real-dir capture, report-only benchmark gating); corpus of 5–10 real fixtures accrues from production runs |
-| **4** | Layer 3 (multi-file mend) | in progress — prove-then-build via `findReferences()` blast-radius (Layer 4 stub-and-continue already shipped v0.5.0); see Phase 4 section |
+| **4** | Layer 3 (multi-file mend) | ✅ 2026-06-11 (deterministic half) — prove-then-build gate cleared (forcing fixture oscillates, period 2); `multiFileMend()` shipped opt-in/off-by-default via `findReferences()` blast-radius, benchmark gate still 7/7. Paid real-model validation (T-4-7) pending; see Phase 4 section |
 
 **Lessons from the path:** "Don't start Phase 2 (mend extraction) before Phase 1 (public bin + CI) is done" held — by the time Layer 2 work landed, the benchmark and matrix gates were already there as CI safety nets. The bigger lesson was D3: building tsmend as a sister package first, then folding it back in, was the right call. The sister-package phase forced clean contract design (MendContext shipped in v0.3.0 *before* any mend code), and the merge happened only once the API surface had stabilized through real implementation work. The two-step "split, design contract, merge" was slower than "in-package from day one" would have been, but produced a cleaner public API.

@@ -18,7 +18,7 @@ If that bet is right, large parts of the spec-driven pipeline (mend agents, mult
 
 ## 2. The four-layer defense model
 
-A TS error has up to four chances to die before reaching a user. Each layer's failure becomes the next layer's input. **Layers 0–1 live in this package. Layers 2–4 live in `spectoship2/`** (for now — see §11).
+A TS error has up to four chances to die before reaching a user. Each layer's failure becomes the next layer's input. **Layers 0–4 now all ship in this package**: Layer 0/1 (deterministic) since v0.1.0, Layer 2 (single-file LLM mend) since v0.4.0, Layer 4 (stub-and-continue) since v0.5.0, and Layer 3 (multi-file LLM mend, opt-in / off by default) as of Phase 4 — see §13. The `mendArchitect` / `repairAgent` agents that remain in `spectoship2/` are a *separate* lineage coupled to `ParsedTask`, not these in-package layers (see §11).
 
 ```
                 generated .ts(x) files on disk
@@ -27,7 +27,7 @@ A TS error has up to four chances to die before reaching a user. Each layer's fa
         ▼                   ▼                   ▼
  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
  │ -1. PREVENT  │   │  0. DETECT   │   │  1. AUTO-FIX │   in this package
- │ prompt rules │   │ in-process   │   │  Layer 0 LSP │
+ │ prompt rules │   │ in-process   │   │  Layer 0 LSP │   (-1 in spectoship2/)
  │ + gotchas    │   │ tsc          │   │  fixer       │
  └──────────────┘   └──────────────┘   └──────────────┘
         │                   │                   │
@@ -37,10 +37,10 @@ A TS error has up to four chances to die before reaching a user. Each layer's fa
         └───────────────────┬───────────────────┘
                             ▼
                 ┌─────────────────────────┐
-                │ 2-4. LLM mend agents    │   in spectoship2/, not yet
-                │   architect+editor      │   exported here (v0.2)
-                │   multi-file/blast      │
-                │   stub-and-continue     │
+                │ 2. single-file mend     │   in this package
+                │ 3. multi-file/blast     │   2 (v0.4.0), 4 (v0.5.0),
+                │    (opt-in, off)        │   3 (Phase 4, opt-in)
+                │ 4. stub-and-continue    │
                 └─────────────────────────┘
 ```
 
@@ -52,11 +52,11 @@ A TS error has up to four chances to die before reaching a user. Each layer's fa
 
 **Layer 2 (single-file LLM mend)** — `mendSingleFile` / `runMendLoop` in `src/{mendAgent,runMendLoop}.ts`. Shipped in-package at v0.4.0. Takes the surviving `MendContext`, sends one file + its type-context to an LLM (Anthropic/OpenAI/Google via the Vercel AI SDK), applies Aider-style SEARCH/REPLACE blocks (`src/applyEditBlock.ts`), and re-validates in a bounded retry loop with no-progress / regression detection. Opt-in (caller supplies the provider key).
 
-**Layer 3 (multi-file LLM mend)** — *not built yet; the one remaining gap.* Would use `ts.LanguageService.findReferences()` to compute a symbol's blast radius and fix all call sites in one model call, instead of `runMendLoop` iterating per file. Deliberately gated behind a "prove-then-build" decision — see §13. Layer 2's per-file iteration already collapses most multi-file ripples, so Layer 3 only earns its place once a forcing fixture proves iteration can't converge.
+**Layer 3 (multi-file LLM mend)** — `multiFileMend` in `src/multiFileMend.ts`. Shipped (Phase 4) **opt-in and off by default** (`enableLayer3: true`), after the prove-then-build gate cleared — see §13. Uses `ts.LanguageService.findReferences()` (`src/blastRadius.ts`) to compute a symbol's blast radius (declaration + every reference site across the workspace) and fixes the whole set in **one** coordinated multi-file SEARCH/REPLACE call, instead of `runMendLoop` iterating per file. Wired between Layer 2 and Layer 4 in `runMendLoop` / `runFullStack`; widens the re-validation scope by every blast-radius file so a migrated error can't hide. Layer 2's per-file iteration already collapses most multi-file ripples, so Layer 3 is reserved for the cases iteration provably can't converge on (the forcing fixture, §13).
 
 **Layer 4 (stub-and-continue escape hatch)** — `stubAndContinue` in `src/stubAndContinue.ts`. Shipped at v0.5.0. For errors no earlier layer resolves, inserts `// @ts-expect-error - tsfix: <codes> — <messages>` above each surviving error site so the workspace compiles, emitting a `LayerEvent` per stub for human review. Idempotent and opt-in (`stubOnFailure: true`).
 
-`runFullStack` (`src/index.ts`) composes Layer 0/1 → 2 → 4 end-to-end. The `mendArchitect` / `multiFileMend` / `repairAgent` agents still in `spectoship2/src/pipeline/` are a *separate* lineage (they depend on `ParsedTask`); they are not these in-package layers — see §11 and the ROADMAP deprecation policy.
+`runFullStack` (`src/index.ts`) composes Layer 0/1 → 2 → (3, if `enableLayer3`) → 4 end-to-end. The `mendArchitect` / `repairAgent` agents still in `spectoship2/src/pipeline/` are a *separate* lineage (they depend on `ParsedTask`); they are not these in-package layers — note in particular that spectoship2's `multiFileMend` is unrelated to this package's `src/multiFileMend.ts` Layer 3 — see §11 and the ROADMAP deprecation policy.
 
 ---
 
@@ -363,7 +363,17 @@ Things we haven't decided, in rough order of how much they'd change the package:
 
 ## 13. Layer 3 — multi-file mend (prove-then-build)
 
-**Status: designed, not built. Phase 4.** This section is the design of record; it flips to "shipped" (with measured numbers) or "deferred" (with the forcing-fixture finding) once Phase 4 lands.
+**Status: shipped, opt-in / off by default. Phase 4 (2026-06-11).** The prove-then-build gate (T-4-2) cleared: per-file iteration *provably* cannot converge on the forcing fixture, so the deterministic half of Layer 3 was built and wired behind `enableLayer3` (default OFF). This section keeps the design rationale below; the **Outcome** subsection records what actually shipped.
+
+### Outcome (what shipped)
+
+- **The gate cleared — Layer 3 is justified.** `fixtures/forcing-multifile-ripple/` models a single contested type (`export type Value` in `lib/shared.ts`, exported as a `declare const value`) constrained to *incompatible* types by two consumers: `consumer-num.ts` does `value * 2` (TS2362 — needs `number`) and `consumer-str.ts` does `value.toUpperCase()` (TS2339 — needs `string`). A deterministic test (`src/multiFileMend.test.ts`) drives a greedy single-file fixer with whole-workspace re-validation and proves the diagnostic-signature set oscillates with **period 2** — `{consumer-num:TS2362} ↔ {consumer-str:TS2339}` — never reaching zero. So `runMendLoop`'s stop conditions (`fixed` / `noProgress` / `regressed`) can never fire → it runs to `maxIterations` without converging. No real LLM was used (SIGN-104 / SIGN-107).
+- **What was built (all deterministic, LLM mocked):**
+  - `src/blastRadius.ts` — `computeBlastRadius()` resolves the symbol behind each surviving diagnostic (a 4-hop type-anchor walk *and* a value-symbol anchor via `getSymbolAtLocation` + alias resolution) and gathers every cross-file reference site via `findReferences()`. A symbol is kept as a blast radius only when its references span **>1 file**. Reuses the shared `DocumentRegistry` (§9); pure, no LLM, no disk writes.
+  - `src/multiFileMend.ts` — `buildMultiFileMendPrompt()` folds the blast radius into one prompt (blast-radius map + every affected file's full content + reused `getTypeContext` declarations; reuses Layer 2's `SYSTEM_INSTRUCTIONS` plus a `MULTI_FILE_PREAMBLE`), and `multiFileMend()` makes **one** LLM call and applies the coordinated cross-file SEARCH/REPLACE set via Layer 2's existing `applyEditBlocks` (which already keys edits by file — no new applier needed).
+  - **Wiring:** `runMendLoop` runs Layer 3 once between the Layer 2 loop and Layer 4 when `enableLayer3 && !dryRun` and errors remain; emits `LayerEvent { layer: 3, ... }`, adds a `"multiFileFixed"` `StopReason`, and **widens the re-validation scope** (`revalidationFiles`, seeded from Layer 2's `filesInScope` and grown by every blast-radius file) so an error the multi-file edit migrates to a file outside the original error set can't hide. `runFullStack` forwards `enableLayer3`.
+- **Mocked end-to-end proof:** a `runFullStack` test with `enableLayer3: true` and a mocked Layer-3 `_callLLM` (retype `Value` to `number` in `shared.ts` + a `String(value)` conversion at the string site) drives the forcing fixture to **0 errors** with `stopReason === "multiFileFixed"`. With `enableLayer3` omitted the fixture stays red, no `layer:3` event fires, and the LLM is never handed the multi-file prompt — the byte-identical-when-disabled regression guard.
+- **No regression:** Layer 3 is OFF by default, so `npm run benchmark` stays at gate 7/7 (forcing-multifile-ripple is `mustPass:false`, report-only — `○ met contract`, 1→1). Real paid model validation against the fixture is the manual, intentionally-skipped **T-4-7**.
 
 ### The gap
 

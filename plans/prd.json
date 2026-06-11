@@ -86,7 +86,8 @@
       "id": "T-4-6",
       "title": "Refresh ARCHITECTURE.md layer model + ROADMAP Phase 4 (docs)",
       "priority": "medium",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
       "acceptance_criteria": [
         "ARCHITECTURE.md §2 layer model no longer says Layers 2-4 live in spectoship2/ 'not exported' — reflects shipped Layer 2 (v0.4.0) + Layer 4 (v0.5.0) and Layer 3's actual status",
         "ARCHITECTURE.md §13 (Layer 3 design) flipped from 'designed' to 'shipped' with the forcing-fixture outcome and any measured numbers — OR 'deferred' with the T-4-2 finding if Layer 3 was not justified",

@@ -694,3 +694,62 @@ literal remains anywhere (`grep -n PRICING src cli` → only `pricing.ts` define
 change).
 
 ---
+
+### Task: T-4-6 - Refresh ARCHITECTURE.md layer model + ROADMAP Phase 4 (docs)
+
+**What was implemented:** (no code — docs only; depended on T-4-4 landing)
+- **ARCHITECTURE.md §2** (four-layer model): the header no longer says "Layers
+  2–4 live in `spectoship2/` (not exported)". It now states all of Layers 0–4
+  ship in-package, with the version each landed (0/1 v0.1.0, 2 v0.4.0, 4 v0.5.0,
+  3 Phase 4 opt-in/off-by-default). Redrew the ASCII box so the bottom group is
+  "2. single-file mend / 3. multi-file/blast (opt-in, off) / 4. stub-and-continue
+  — in this package" instead of "2-4. LLM mend agents — in spectoship2/, v0.2".
+  Rewrote the **Layer 3** bullet from "*not built yet; the one remaining gap*" to
+  the shipped description (`multiFileMend` in `src/multiFileMend.ts`, blast radius
+  via `src/blastRadius.ts`, one coordinated multi-file call, wired between L2 and
+  L4, widened re-validation scope). Updated the `runFullStack` composition line to
+  `Layer 0/1 → 2 → (3, if enableLayer3) → 4` and clarified that spectoship2's
+  `multiFileMend` is a *different* file from this package's Layer 3.
+- **ARCHITECTURE.md §13** (Layer 3 design): flipped the status line from "designed,
+  not built" to "**shipped, opt-in / off by default. Phase 4 (2026-06-11)**" and
+  added an **Outcome (what shipped)** subsection recording the T-4-2 gate result
+  (period-2 oscillation `{consumer-num:TS2362} ↔ {consumer-str:TS2339}` on a single
+  contested `type Value`), the deterministic pieces built (blastRadius, prompt
+  builder, multiFileMend, wiring + widened re-validation scope + `multiFileFixed`
+  StopReason), the mocked end-to-end proof (forcing fixture → 0 errors with
+  `enableLayer3:true`; byte-identical when off), and "no regression — benchmark
+  gate stays 7/7; real paid validation is the still-pending T-4-7". Kept the
+  design-of-record prose below the new status/outcome.
+- **ROADMAP.md Phase 4**: marked the section `✅ (2026-06-11, deterministic half)`,
+  added the outcome paragraph (gate cleared → Layer 3 justified/shipped), and
+  checked off T-4-1..T-4-6 each with a one-line "what shipped" (T-4-7 stays
+  manual/pending). Updated the summary-timeline Phase 4 row from "in progress" to
+  ✅ with the period-2 + opt-in + 7/7-gate summary.
+
+**Files changed:** `ARCHITECTURE.md` (§2, §13), `ROADMAP.md` (Phase 4 section +
+summary timeline) (+ `plans/prd.json`, `plans/progress.md`).
+
+**Learnings:**
+- §13 pre-supposed two possible endings ("shipped with numbers" OR "deferred with
+  the finding"). Since the gate *cleared*, the honest flip is "shipped" + the
+  forcing-fixture proof as the justification — not just a status word change. The
+  Outcome subsection carries the period-2 evidence so a future reader sees *why*
+  Layer 3 earned its place, not merely that it exists.
+- The one genuine correctness subtlety worth surfacing in the docs (and now in
+  §2/§13) is the **widened re-validation scope**: Layer 3's edits can migrate an
+  error to a file outside the original error set, so the loop re-checks over
+  `filesInScope ∪ blast-radius files`. That's the multi-file analogue of the
+  blind spot T-4-2 documented for `runMendLoop`'s per-file scoping.
+- Docs-only: no runtime path touched, so check-types/test/benchmark are unchanged
+  from T-4-5 (the verification is a no-op regression guard, run per SIGN-001).
+
+**Verification:** `npm run check-types` clean · `npm run test` 172/172 passed
+(18 files; same 2 benign WSL2 `onTaskUpdate` RPC-timeout "errors") · `npm run
+benchmark` exit 0, gate 7/7 (no regression — docs-only), forcing-multifile-ripple
+still `○ met contract` (1→1, report-only).
+
+**Phase 4 status:** All build tasks (T-4-1..T-4-6) now `passes:true`. Only T-4-7
+remains — `skip:true` (manual paid LLM validation, SIGN-104). Per SIGN-002, the
+loop can complete: every non-skipped feature passes.
+
+---
