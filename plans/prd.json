@@ -14,7 +14,8 @@
       "id": "T-4-1",
       "title": "Deterministic blast-radius computation via findReferences",
       "priority": "high",
-      "passes": false,
+      "passes": true,
+      "completed_at": "2026-06-11",
       "acceptance_criteria": [
         "New src/blastRadius.ts exports computeBlastRadius(opts) — given workspaceRoot + surviving Diagnostic[], uses ts.LanguageService.findReferences()/getReferencesAtPosition to return, per error symbol, the set of { symbol, declarationFile, references: {file,line,col}[] } spanning the workspace",
         "Reuses the shared DocumentRegistry (src/sharedTsHost.ts) — no new lib double-parse; loads the WORKSPACE typescript, no bundling (SIGN-102)",

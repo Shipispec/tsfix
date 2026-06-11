@@ -381,3 +381,63 @@ marks in-flight tests failed under full parallel load (documented benign pattern
 confirmed by running both files alone: 28/28 pass).
 
 ---
+
+## 2026-06-11 - Session Notes (Phase 4 — Layer 3 multi-file mend)
+
+### Task: T-4-1 - Deterministic blast-radius computation via findReferences
+
+**What was implemented:**
+- Added `src/blastRadius.ts`: `computeBlastRadius({ workspaceRoot, diagnostics })`
+  → `{ symbols: SymbolBlastRadius[] }`, where each entry is
+  `{ symbol, declarationFile, references: {file,line,col}[] }`. For every
+  surviving diagnostic it (1) resolves the user-land symbol behind the error
+  via the TypeChecker, then (2) calls `LanguageService.findReferences()` at that
+  symbol's **declaration name** to gather every reference site spanning the
+  workspace. Pure + deterministic: no LLM, no disk writes, single pass.
+- **Symbol resolution reuses `typeContext.ts`'s walk** (not imported — a focused
+  copy `resolveSymbolDeclaration`): bounded 4-hop ancestor walk, `getTypeAtLocation`
+  → `getSymbol()/aliasSymbol` → first non-lib declaration, with the TS2339 escape
+  (probe `.expression` on property/element access) and every checker call guarded
+  against TS-internal throws (rename cascades). Anchors `findReferences` on the
+  declaration's `.name` identifier, since references resolve against the name span.
+- **LanguageService host** mirrors `tsLanguageServiceFixer.ts`'s read-only parts:
+  same lib-path workaround (workspace `node_modules/typescript/lib`, no bundling —
+  SIGN-102), shared `DocumentRegistry` via `getSharedDocumentRegistry()` with
+  content-versioned non-lib files (`sharedScriptVersion`). **Seeds EVERY project
+  file** (`parsed.fileNames`), not just the error files, so `findReferences` can
+  search the whole workspace.
+- **Determinism guarantees:** symbols deduped by declaration site (two errors on
+  the same type → one entry); references deduped by `(file,line,col)` and sorted;
+  symbols sorted by `(declarationFile, symbol)`. Paths are workspace-relative,
+  line/col 1-indexed.
+
+**Files changed:** `src/blastRadius.ts` (new), `src/blastRadius.test.ts` (new).
+
+**Test design (3 cases, driven through `runInProcessTsc` for honest line/cols):**
+1. Multi-file symbol: `User` declared in `user.ts`, imported by `a/b/c.ts`; the
+   broken `c.ts` omits a required prop (TS2741). Asserts the single error's blast
+   radius spans all four files (`user.ts` decl + 3 importers), symbol `User`,
+   sorted refs, 1-indexed positions.
+2. Dedup: two TS2741s in `c.ts`/`d.ts` both resolve to `User` → exactly one entry.
+3. Zero-references: a primitive `number = 'hello'` (TS2322) — every type is a lib
+   type, so no user-land symbol → `symbols: []`.
+
+**Learnings:**
+- The error position rarely lands *on* the symbol identifier (TS2741 points at the
+  object literal, not the type). Resolving via the **declaration name** + the
+  4-hop type walk — rather than `findReferences` at the raw error position — is
+  what makes the blast radius hit the actual symbol. Anchoring on the declaration
+  also gives the same, complete reference set regardless of which usage erred.
+- A persistent shared registry is reused safely here because non-lib files are
+  content-versioned (SIGN from T-3c-2 carried over); tests `resetSharedTsHost()`
+  in before/after so the symlinked-typescript temp workspaces don't cross-talk.
+
+**Next (T-4-2 — the PROVE gate, SIGN-106):** must demonstrate per-file iteration
+CANNOT converge on a forcing fixture before T-4-3/T-4-4 build Layer 3; else defer.
+
+**Verification:** `npm run check-types` clean · `npm run test` 166/166 passed
+(17 files; +3 new blast-radius tests; same 3 benign WSL2 `onTaskUpdate` RPC-timeout
+"errors") · `npm run benchmark` exit 0, gate 7/7, output unchanged (new module is
+not yet wired into any runtime path).
+
+---
