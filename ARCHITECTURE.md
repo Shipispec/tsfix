@@ -50,7 +50,13 @@ A TS error has up to four chances to die before reaching a user. Each layer's fa
 
 **Layer 1 (deterministic auto-fix)** — `runLSPFixerPass` in `src/tsLanguageServiceFixer.ts`. Uses `ts.LanguageService.getCodeFixesAtPosition` — the same engine VS Code Quick Fix uses. Strictly opt-in by error code (`SAFE_FIXABLE_CODES`) and fix name (`SAFE_FIX_NAMES`). Free, deterministic, ~ms per fix. **This is the layer doing the most work in the bet**: every error class we can resolve here costs no LLM tokens and produces no probabilistic regressions.
 
-**Layers 2–4 (LLM mend)** — `mendAgent` (single-file), `mendArchitect` (architect+editor split for harder single-file cases), `multiFileMend` (blast-radius search-and-replace), `repairAgent` (skipped-task recovery). All currently in `spectoship2/src/pipeline/`. Will move into this package as v0.2 once their `ParsedTask` dependency is redesigned as an opaque interface.
+**Layer 2 (single-file LLM mend)** — `mendSingleFile` / `runMendLoop` in `src/{mendAgent,runMendLoop}.ts`. Shipped in-package at v0.4.0. Takes the surviving `MendContext`, sends one file + its type-context to an LLM (Anthropic/OpenAI/Google via the Vercel AI SDK), applies Aider-style SEARCH/REPLACE blocks (`src/applyEditBlock.ts`), and re-validates in a bounded retry loop with no-progress / regression detection. Opt-in (caller supplies the provider key).
+
+**Layer 3 (multi-file LLM mend)** — *not built yet; the one remaining gap.* Would use `ts.LanguageService.findReferences()` to compute a symbol's blast radius and fix all call sites in one model call, instead of `runMendLoop` iterating per file. Deliberately gated behind a "prove-then-build" decision — see §13. Layer 2's per-file iteration already collapses most multi-file ripples, so Layer 3 only earns its place once a forcing fixture proves iteration can't converge.
+
+**Layer 4 (stub-and-continue escape hatch)** — `stubAndContinue` in `src/stubAndContinue.ts`. Shipped at v0.5.0. For errors no earlier layer resolves, inserts `// @ts-expect-error - tsfix: <codes> — <messages>` above each surviving error site so the workspace compiles, emitting a `LayerEvent` per stub for human review. Idempotent and opt-in (`stubOnFailure: true`).
+
+`runFullStack` (`src/index.ts`) composes Layer 0/1 → 2 → 4 end-to-end. The `mendArchitect` / `multiFileMend` / `repairAgent` agents still in `spectoship2/src/pipeline/` are a *separate* lineage (they depend on `ParsedTask`); they are not these in-package layers — see §11 and the ROADMAP deprecation policy.
 
 ---
 
@@ -352,3 +358,28 @@ Things we haven't decided, in rough order of how much they'd change the package:
 5. **Should the persist-to-disk step be transactional?** Today we write each edited file independently with `writeFileSync`. A power loss mid-pass could leave half-edited workspaces. Probably fine for our threat model (LLM-iteration scratchpads, not production code) but worth flagging if the package is ever used in higher-stakes contexts.
 
 6. **Should the package emit structured per-layer events?** Per `docs/internal/STATUS.md`'s telemetry gap. The shape would be `{layer, errorCode, fixed, latencyMs}`; the open question is delivery — return as part of the result, emit as a Node `EventEmitter`, write to a log file, or all three. Lean toward "return as part of result" for consistency with the current API style.
+
+---
+
+## 13. Layer 3 — multi-file mend (prove-then-build)
+
+**Status: designed, not built. Phase 4.** This section is the design of record; it flips to "shipped" (with measured numbers) or "deferred" (with the forcing-fixture finding) once Phase 4 lands.
+
+### The gap
+
+Layer 2 (`runMendLoop`) is single-file: each iteration mends `erroredFiles[0]`, re-validates, then takes the next errored file. Multi-file ripples are handled by *iterating across files* — N files cost N LLM calls, and the loop only converges when each local fix monotonically shrinks the error set. Layer 3's premise: use `ts.LanguageService.findReferences()` to compute a symbol's **blast radius** (declaration + every reference site across the workspace) and fix all of them in **one** model call — eliminating "fix one caller, break another."
+
+### Why prove-then-build, not build
+
+`docs/internal/STATUS.md` records the blocker: *"Synthetic ripple fixtures so far converge via iteration; we don't have a forcing function yet."* Building Layer 3 before a case exists that iteration provably cannot solve is YAGNI — it adds a second, more complex LLM path whose only justification is unproven. So Phase 4 front-loads the proof:
+
+1. **Blast-radius computation** (`src/blastRadius.ts`) — deterministic, no LLM. `findReferences()` over the surviving diagnostics' symbols. Independently useful and fully unit-testable. *(T-4-1)*
+2. **Forcing fixture + non-convergence proof** (`fixtures/forcing-multifile-ripple/`) — a cross-file ripple where the locally-obvious fix necessarily breaks another file (mutual-rename oscillation is the candidate). A deterministic test drives a *mock* single-file fixer and asserts the diagnostic-signature set does **not** monotonically reach zero. If it converges instead, Layer 3 is **deferred** and the build tasks are skipped. *(T-4-2 — the gate)*
+3. **Only if the gate passes:** the multi-file prompt builder *(T-4-3)*, `multiFileMend()` + coalesced multi-file SEARCH/REPLACE wired as Layer 3 between Layer 2 and Layer 4, opt-in and **off by default** *(T-4-4)*.
+
+### Constraints
+
+- **Loop builds the deterministic half only.** Blast-radius, prompt construction, multi-file edit application, and wiring are all testable with a mocked `_callLLM`. The real paid model validation is a separate manual step (SIGN-104 / SIGN-107).
+- **Off by default.** Like Layer 2 and Layer 4, Layer 3 is opt-in; `npm run benchmark` must stay 14/14 with it disabled, and disabled behavior must be byte-identical to pre-Layer-3.
+- **Same host bet.** Blast-radius uses the workspace's TypeScript via the shared `DocumentRegistry` (§9) — no bundling (SIGN-102).
+- **Same layer contract** as §8's "add a new layer": invalidate the in-process tsc cache before downstream re-validation.

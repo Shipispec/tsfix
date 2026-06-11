@@ -1,92 +1,106 @@
 {
   "repo": "shipispec/tsfix",
-  "branchName": "ralph/phase3-perf-realfixtures",
+  "branchName": "ralph/phase4-layer3-multifile",
   "verifyCommand": "npm run check-types && npm run test && npm run benchmark",
   "acceptanceCriteria": [
     "npm run check-types passes (clean)",
     "npm run test passes (vitest, all files)",
-    "npm run benchmark passes 14/14 with no regression",
+    "npm run benchmark passes 14/14 with no regression (Layer 3 is opt-in, OFF by default)",
     "All non-skipped features have passes: true"
   ],
+  "notes": "Phase 4 = Layer 3 (multi-file LLM mend via findReferences blast-radius), PROVE-THEN-BUILD. Layers 0/1/2/4 already ship. T-4-2 is the gate: if per-file iteration already converges on the forcing fixture, record the finding and skip T-4-3/T-4-4 (see guardrails SIGN-106). The loop builds only the DETERMINISTIC half (blast-radius, prompt builder, multi-file apply, wiring) with the LLM MOCKED; real paid LLM validation is the manual T-4-7 (skipped) per SIGN-104.",
   "features": [
     {
-      "id": "T-3c-1",
-      "title": "Baseline perf instrumentation for lib-file double-load",
+      "id": "T-4-1",
+      "title": "Deterministic blast-radius computation via findReferences",
       "priority": "high",
-      "passes": true,
-      "completed_at": "2026-06-10",
+      "passes": false,
       "acceptance_criteria": [
-        "benchmark/run-benchmark.ts records per-fixture timing including lib-load cost",
-        "Baseline numbers (cold lib-load in validatorInProcess + tsLanguageServiceFixer) written to plans/progress.md",
-        "npm run benchmark still 14/14; check-types clean"
+        "New src/blastRadius.ts exports computeBlastRadius(opts) — given workspaceRoot + surviving Diagnostic[], uses ts.LanguageService.findReferences()/getReferencesAtPosition to return, per error symbol, the set of { symbol, declarationFile, references: {file,line,col}[] } spanning the workspace",
+        "Reuses the shared DocumentRegistry (src/sharedTsHost.ts) — no new lib double-parse; loads the WORKSPACE typescript, no bundling (SIGN-102)",
+        "Pure + deterministic: no LLM, no disk writes",
+        "src/blastRadius.test.ts covers a multi-file symbol-rename case (correct cross-file reference set) and a zero-references case",
+        "check-types clean; npm run test passes; npm run benchmark 14/14"
       ],
-      "notes": "ARCHITECTURE.md section 9: lib files parsed twice (~600-800ms + ~200ms). Quantify before refactoring."
+      "notes": "Independently useful (could back a future --blast-radius diagnostic). typeContext.ts already caches a Program per workspace; follow that pattern. findReferences spans are workspace-relative."
     },
     {
-      "id": "T-3c-2",
-      "title": "Shared Program/host abstraction so Layer 0 and Layer 1 share one lib-file parse",
+      "id": "T-4-2",
+      "title": "Forcing-function fixture + deterministic non-convergence proof (the PROVE gate)",
       "priority": "high",
-      "passes": true,
-      "completed_at": "2026-06-10",
+      "passes": false,
       "acceptance_criteria": [
-        "validatorInProcess.ts (Layer 0) and tsLanguageServiceFixer.ts (Layer 1) consume a single shared lib-file parse / host",
-        "Diagnostics produced are byte-identical to pre-refactor (regression-tested)",
-        "Measured per-fixture latency improves vs T-3c-1 baseline (record in progress.md)",
-        "npm run test passes; npm run benchmark 14/14; check-types clean"
+        "fixtures/forcing-multifile-ripple/ exists (mustPass:false, report-only) modeling a cross-file ripple where the locally-obvious single-file fix necessarily introduces an error in another file (e.g. a mutual rename / signature change that greedy per-file fixing oscillates on)",
+        "A deterministic test (src/multiFileMend.test.ts or blastRadius.test.ts) simulates per-file LOCAL fixes via a mock single-file fixer and asserts the diagnostic-signature set does NOT monotonically reach zero (oscillates or regresses) — establishing that runMendLoop's per-file iteration cannot converge, i.e. Layer 3 is justified",
+        "IF instead the mock converges: the test documents convergence, plans/progress.md records 'Layer 3 NOT justified — deferred', and T-4-3 + T-4-4 are set skip:true per SIGN-106",
+        "No real LLM call (SIGN-104); check-types/test/benchmark green"
       ],
-      "notes": "ARCHITECTURE.md section 12 D2. Layer 1 uses LanguageServiceHost, Layer 0 uses CompilerHost - unify the host abstraction. Do NOT bundle typescript; keep the workspace lib-path bet intact (see plans/guardrails.md SIGN-102)."
+      "notes": "The honest gate for prove-then-build. STATUS.md notes prior synthetic ripple fixtures converged via iteration; the job is to find (or prove the absence of) a case that doesn't. Mutual-rename oscillation is the candidate forcing pattern."
     },
     {
-      "id": "T-3c-3",
-      "title": "Document shared-Program decision in ARCHITECTURE.md and ROADMAP.md",
+      "id": "T-4-3",
+      "title": "Multi-file mend prompt builder (deterministic, LLM mocked)",
+      "priority": "high",
+      "passes": false,
+      "acceptance_criteria": [
+        "A builder (e.g. buildMultiFileMendPrompt in src/multiFileMend.ts) folds the T-4-1 blast-radius set into a single prompt: every affected file + all reference sites grouped by symbol, reusing typeContext where useful",
+        "Unit tests assert the prompt contains every blast-radius file and reference site for the T-4-2 forcing fixture (no real LLM)",
+        "check-types clean; npm run test passes; npm run benchmark 14/14"
+      ],
+      "notes": "Depends on T-4-1 (blast radius) and T-4-2 (forcing fixture). Gated by SIGN-106: skip if T-4-2 deferred Layer 3."
+    },
+    {
+      "id": "T-4-4",
+      "title": "Layer 3 multiFileMend() + wiring (opt-in, OFF by default; LLM mocked in tests)",
+      "priority": "high",
+      "passes": false,
+      "acceptance_criteria": [
+        "src/multiFileMend.ts exports multiFileMend(opts) — ONE LLM call spanning N files via the blast radius; applies coalesced multi-file SEARCH/REPLACE by reusing applyEditBlocks across files",
+        "Wired as Layer 3 between Layer 2 and Layer 4 in runMendLoop/runFullStack via an opt-in flag (e.g. multiFile: true / enableLayer3), DEFAULT OFF; emits LayerEvent { layer: 3, ... }",
+        "runFullStack test with a mocked Layer-3 _callLLM (returning multi-file edit blocks) resolves fixtures/forcing-multifile-ripple to 0 errors",
+        "Regression: with Layer 3 disabled, behavior is byte-identical to pre-T-4-4 (assert in a test); npm run benchmark stays 14/14 (Layer 3 off by default)",
+        "check-types clean; npm run test passes"
+      ],
+      "notes": "Follows the §8 'add a new layer' contract: invalidate the in-process tsc cache (resetInProcessTscCache) before re-validation. Gated by SIGN-106: skip if T-4-2 deferred Layer 3."
+    },
+    {
+      "id": "T-4-5",
+      "title": "Extract PRICING to src/pricing.ts (single source) — resolves index.ts:451 TODO",
       "priority": "medium",
-      "passes": true,
-      "completed_at": "2026-06-10",
+      "passes": false,
       "acceptance_criteria": [
-        "ARCHITECTURE.md section 9 (perf) and section 12 D2 updated to reflect the shipped shared-Program approach",
-        "ROADMAP.md Phase 3c marked done with the measured latency delta",
-        "check-types/test/benchmark still green"
+        "src/pricing.ts is the single PRICING table + costUsd() source; src/index.ts and cli/run-stack.ts import it instead of duplicating the table",
+        "No duplicated PRICING literal remains in index.ts or cli/run-stack.ts",
+        "Existing cost-computation tests (runFullStack.test.ts) still pass unchanged",
+        "check-types clean; npm run test passes; npm run benchmark 14/14"
       ],
-      "notes": "Docs-only; depends on T-3c-2 landing."
+      "notes": "Clean dedup. The TODO is at src/index.ts:451; cli/run-stack.ts has the mirror copy. Pure refactor — no behavior change."
     },
     {
-      "id": "T-3b-1",
-      "title": "fixtures/REAL.md documenting real-failure fixture format + node_modules strategy",
-      "priority": "high",
-      "passes": true,
-      "completed_at": "2026-06-10",
-      "acceptance_criteria": [
-        "fixtures/REAL.md exists: real-<timestamp>-<hash>/ layout, expected.json schema, mustPass lifecycle (false then true once fixed)",
-        "Documents node_modules strategy option (a): commit broken .ts(x) + package-lock.json + setup.sh (per ROADMAP 3b)",
-        "check-types/test/benchmark still green"
-      ],
-      "notes": "ROADMAP Phase 3b. so-real-* fixtures already exist; this formalizes the real-failure capture format."
-    },
-    {
-      "id": "T-3b-2",
-      "title": "Enhance scripts/capture-fixture.mjs to emit real-failure fixture dirs",
-      "priority": "high",
-      "passes": true,
-      "completed_at": "2026-06-10",
-      "acceptance_criteria": [
-        "capture-fixture.mjs writes fixtures/real-<timestamp>-<hash>/ with broken files, Diagnostic[] snapshot, and expected.json (mustPass:false default) + setup.sh",
-        "A smoke/unit test exercises the capture flow on a sample broken workspace",
-        "Existing benchmark fixture discovery is unaffected; check-types/test/benchmark green"
-      ],
-      "notes": "Reuse existing scripts/capture-fixture.mjs. expected.json schema already in repo (fixtures/*/expected.json)."
-    },
-    {
-      "id": "T-3b-3",
-      "title": "Benchmark harness treats mustPass:false fixtures as report-only (non-blocking)",
+      "id": "T-4-6",
+      "title": "Refresh ARCHITECTURE.md layer model + ROADMAP Phase 4 (docs)",
       "priority": "medium",
-      "passes": true,
-      "completed_at": "2026-06-10",
+      "passes": false,
       "acceptance_criteria": [
-        "benchmark/run-benchmark.ts reads expected.json mustPass; mustPass:false fixtures are reported but do not fail the run/CI",
-        "Add/convert one seed real-* fixture (mustPass:false) to validate the report-only path end-to-end",
-        "npm run benchmark stays 14/14 on mustPass:true set; check-types/test green"
+        "ARCHITECTURE.md §2 layer model no longer says Layers 2-4 live in spectoship2/ 'not exported' — reflects shipped Layer 2 (v0.4.0) + Layer 4 (v0.5.0) and Layer 3's actual status",
+        "ARCHITECTURE.md §13 (Layer 3 design) flipped from 'designed' to 'shipped' with the forcing-fixture outcome and any measured numbers — OR 'deferred' with the T-4-2 finding if Layer 3 was not justified",
+        "ROADMAP.md Phase 4 row marked done with what shipped",
+        "check-types/test/benchmark green"
       ],
-      "notes": "Lets production-captured failures live in-tree before a fix ships, then flip mustPass:true once fixed."
+      "notes": "Docs-only; depends on T-4-4 (or T-4-2's defer outcome) landing. Mirrors the Phase 3c docs pass."
+    },
+    {
+      "id": "T-4-7",
+      "title": "Paid end-to-end LLM validation of Layer 3 against the forcing fixture",
+      "priority": "low",
+      "passes": false,
+      "skip": true,
+      "skipReason": "Manual paid step — needs ANTHROPIC_API_KEY, is nondeterministic, and must NOT gate the unattended loop (SIGN-104). Run `npm run benchmark:llm` (or a real-model runFullStack with multiFile:true) against fixtures/forcing-multifile-ripple manually once Layer 3 lands, then record the result and flip the fixture's mustPass:true if it resolves.",
+      "acceptance_criteria": [
+        "Manual: a real LLM (e.g. claude-haiku-4-5) running Layer 3 resolves fixtures/forcing-multifile-ripple in ONE multi-file call",
+        "Manual: result recorded in plans/progress.md; fixture mustPass flipped to true if it passes"
+      ],
+      "notes": "Intentionally skipped so the loop completes deterministically. This is the real proof that the mocked Layer 3 corresponds to actual model behavior."
     }
   ]
 }
