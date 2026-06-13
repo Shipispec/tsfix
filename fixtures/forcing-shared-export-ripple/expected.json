@@ -1,0 +1,8 @@
+{
+	"description": "Harder forcing-function candidate for Layer 3 (T-4-7 attempt 2). A helper `bump` that two consumers import is MISSING from shared.ts; the correct fix must live in shared.ts because `bump` closes over the module-private `counters` map. shared.ts has no error of its own, so Layer 2 (which only edits files that appear in the error list) structurally never edits it. Report-only (mustPass:false): Layer 0/1 have no safe quick-fix for TS2305 here, so the deterministic loop abstains and 2 errors survive. Whether Layer 2 can still reach 0 errors via a LOCAL redefinition (a semantically wrong but type-clean hack) vs whether Layer 3's shared-file edit is required is exactly what T-4-7 measures.",
+	"errorsBefore": 2,
+	"errorsAfterMax": 2,
+	"lspFixesAppliedMin": 0,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false
+}

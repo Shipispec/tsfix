@@ -102,12 +102,14 @@
       "priority": "low",
       "passes": false,
       "skip": true,
-      "skipReason": "Manual paid step — needs ANTHROPIC_API_KEY, is nondeterministic, and must NOT gate the unattended loop (SIGN-104). Run `npm run benchmark:llm` (or a real-model runFullStack with multiFile:true) against fixtures/forcing-multifile-ripple manually once Layer 3 lands, then record the result and flip the fixture's mustPass:true if it resolves.",
+      "done": "2026-06-13 (manual)",
+      "outcome": "NEGATIVE — Layer 3 NOT validated; deferred/unvalidated. Real claude-haiku-4-5 run (~$0.007): (1) on forcing-multifile-ripple, Layer 2 ALONE reached 0 errors via a local `Number(value)*2` cast and Layer 3 never fired — T-4-2's oscillation proof was a strawman (real fixers convert at the use site, they don't retype the shared declaration); (2) on a harder new fixture forcing-shared-export-ripple (missing shared export), NEITHER layer fixed it (Layer 3 can't engage — a missing symbol has no findReferences blast radius). Conclusion: under errorsAfter===0 no fixture is both unfixable-by-Layer-2 and fixable-by-Layer-3 (casts/adapters fix symbol-exists ripples locally; @ts-expect-error/Layer 4 is a universal escape). Layer 3 code stays in-tree, dormant, opt-in (enableLayer3, default OFF), off all gates. Fixtures stay mustPass:false. Re-justify only on fix-QUALITY grounds with a correctness-scoring eval. Full writeup: ARCHITECTURE.md §13 T-4-7 finding + plans/progress.md 2026-06-13.",
+      "skipReason": "Manual paid step — needs ANTHROPIC_API_KEY, is nondeterministic, and must NOT gate the unattended loop (SIGN-104). Was run manually 2026-06-13; see `outcome`.",
       "acceptance_criteria": [
         "Manual: a real LLM (e.g. claude-haiku-4-5) running Layer 3 resolves fixtures/forcing-multifile-ripple in ONE multi-file call",
         "Manual: result recorded in plans/progress.md; fixture mustPass flipped to true if it passes"
       ],
-      "notes": "Intentionally skipped so the loop completes deterministically. This is the real proof that the mocked Layer 3 corresponds to actual model behavior."
+      "notes": "Ran manually 2026-06-13 — NEGATIVE result (see `outcome`). The cheap real run contradicted the mocked T-4-2 gate: a mocked prove-then-build gate is only as trustworthy as the mock's fidelity to real model behavior."
     }
   ]
 }

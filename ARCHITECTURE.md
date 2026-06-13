@@ -52,7 +52,7 @@ A TS error has up to four chances to die before reaching a user. Each layer's fa
 
 **Layer 2 (single-file LLM mend)** — `mendSingleFile` / `runMendLoop` in `src/{mendAgent,runMendLoop}.ts`. Shipped in-package at v0.4.0. Takes the surviving `MendContext`, sends one file + its type-context to an LLM (Anthropic/OpenAI/Google via the Vercel AI SDK), applies Aider-style SEARCH/REPLACE blocks (`src/applyEditBlock.ts`), and re-validates in a bounded retry loop with no-progress / regression detection. Opt-in (caller supplies the provider key).
 
-**Layer 3 (multi-file LLM mend)** — `multiFileMend` in `src/multiFileMend.ts`. Shipped (Phase 4) **opt-in and off by default** (`enableLayer3: true`), after the prove-then-build gate cleared — see §13. Uses `ts.LanguageService.findReferences()` (`src/blastRadius.ts`) to compute a symbol's blast radius (declaration + every reference site across the workspace) and fixes the whole set in **one** coordinated multi-file SEARCH/REPLACE call, instead of `runMendLoop` iterating per file. Wired between Layer 2 and Layer 4 in `runMendLoop` / `runFullStack`; widens the re-validation scope by every blast-radius file so a migrated error can't hide. Layer 2's per-file iteration already collapses most multi-file ripples, so Layer 3 is reserved for the cases iteration provably can't converge on (the forcing fixture, §13).
+**Layer 3 (multi-file LLM mend)** — `multiFileMend` in `src/multiFileMend.ts`. Built in Phase 4, **opt-in and off by default** (`enableLayer3: true`), but **UNVALIDATED and dormant** — real-LLM testing (T-4-7) could not demonstrate it is necessary; see §13's T-4-7 finding before relying on it. It uses `ts.LanguageService.findReferences()` (`src/blastRadius.ts`) to compute a symbol's blast radius and fix the whole set in one coordinated multi-file SEARCH/REPLACE call, wired between Layer 2 and Layer 4. In practice Layer 2's per-file iteration fixes symbol-exists ripples *locally* (a cast/adapter at each use site), and Layer 3 can't engage on symbol-missing cases (no declaration to trace) — so no `errorsAfter === 0` fixture is known that forces it. Kept in-tree for a possible future fix-*quality* eval (§13).
 
 **Layer 4 (stub-and-continue escape hatch)** — `stubAndContinue` in `src/stubAndContinue.ts`. Shipped at v0.5.0. For errors no earlier layer resolves, inserts `// @ts-expect-error - tsfix: <codes> — <messages>` above each surviving error site so the workspace compiles, emitting a `LayerEvent` per stub for human review. Idempotent and opt-in (`stubOnFailure: true`).
 
@@ -363,7 +363,7 @@ Things we haven't decided, in rough order of how much they'd change the package:
 
 ## 13. Layer 3 — multi-file mend (prove-then-build)
 
-**Status: shipped, opt-in / off by default. Phase 4 (2026-06-11).** The prove-then-build gate (T-4-2) cleared: per-file iteration *provably* cannot converge on the forcing fixture, so the deterministic half of Layer 3 was built and wired behind `enableLayer3` (default OFF). This section keeps the design rationale below; the **Outcome** subsection records what actually shipped.
+**Status: built but UNVALIDATED — opt-in / off by default, do not rely on it. Phase 4 (2026-06-11), revised after T-4-7 (2026-06-13).** The deterministic half of Layer 3 is built and wired behind `enableLayer3` (default OFF), and the *mocked* prove-then-build gate (T-4-2) cleared. But the real-LLM validation (T-4-7) **failed to demonstrate Layer 3 is necessary** — see the **T-4-7 finding** subsection below, which supersedes the optimistic framing in **Outcome**. Net: the code ships dormant, the forcing fixtures stay `mustPass:false`, and Layer 3's value is unproven. Read the T-4-7 finding before building on this.
 
 ### Outcome (what shipped)
 
@@ -374,6 +374,22 @@ Things we haven't decided, in rough order of how much they'd change the package:
   - **Wiring:** `runMendLoop` runs Layer 3 once between the Layer 2 loop and Layer 4 when `enableLayer3 && !dryRun` and errors remain; emits `LayerEvent { layer: 3, ... }`, adds a `"multiFileFixed"` `StopReason`, and **widens the re-validation scope** (`revalidationFiles`, seeded from Layer 2's `filesInScope` and grown by every blast-radius file) so an error the multi-file edit migrates to a file outside the original error set can't hide. `runFullStack` forwards `enableLayer3`.
 - **Mocked end-to-end proof:** a `runFullStack` test with `enableLayer3: true` and a mocked Layer-3 `_callLLM` (retype `Value` to `number` in `shared.ts` + a `String(value)` conversion at the string site) drives the forcing fixture to **0 errors** with `stopReason === "multiFileFixed"`. With `enableLayer3` omitted the fixture stays red, no `layer:3` event fires, and the LLM is never handed the multi-file prompt — the byte-identical-when-disabled regression guard.
 - **No regression:** Layer 3 is OFF by default, so `npm run benchmark` stays at gate 7/7 (forcing-multifile-ripple is `mustPass:false`, report-only — `○ met contract`, 1→1). Real paid model validation against the fixture is the manual, intentionally-skipped **T-4-7**.
+
+### T-4-7 finding — real-LLM validation (2026-06-13): Layer 3 is NOT demonstrably necessary
+
+The Outcome above is correct about *what was built and unit-tested*, but its justification rested on a **mock** greedy fixer. Running the real model (claude-haiku-4-5, ~$0.007 total) exposed that the mock does not predict real behavior:
+
+1. **`forcing-multifile-ripple` (the gate fixture) — Layer 2 alone fixes it; Layer 3 never fires.** The real single-file mend resolved the contradiction *locally* — `consumer-num.ts` became `Number(value) * 2`, leaving `shared.ts` and `consumer-str.ts` untouched — reaching 0 errors in one Layer-2 call. T-4-2's "period-2 oscillation" only happens against a fixer that *insists on retyping the shared declaration*; a real fixer inserts a local conversion at the use site instead. **The forcing function is a strawman.**
+
+2. **`forcing-shared-export-ripple` (harder attempt — a missing shared export `bump` that must close over module-private state) — neither layer fixes it.** Both Layer 2 and Layer 3 returned `noProgress`. Layer 3 in particular *cannot engage*: it computes blast radius via `findReferences()`, but a **missing** symbol has no declaration to trace, so `shared.ts` is never pulled into scope and the model only sees the consumers.
+
+These are the two arms of a pincer that appears to be general:
+
+- **Symbol-exists ripples** (rename / signature / type change) are fixable *locally* at each use site — a cast (`as unknown as T`), an annotation, an adapter — so Layer 2's per-file iteration converges. (This is exactly what `docs/internal/STATUS.md` observed.)
+- **Symbol-missing cases** put the fix in a file with no error of its own, which Layer 3's reference-tracing can't reach.
+- And `@ts-expect-error` (i.e. **Layer 4**) is a universal local escape that can drive *any* workspace to 0 errors.
+
+**Conclusion:** under an `errorsAfter === 0` metric there is essentially no fixture that is simultaneously (a) unfixable by Layer 2 and (b) fixable by Layer 3. Layer 3 is therefore **deferred / unvalidated**: the code stays in-tree, dormant and opt-in, but is not claimed to work and is not on any gate. If revisited, it must be re-justified on **fix-quality** grounds (a coordinated, *correct* shared edit vs. a Layer-2 local hack that compiles but diverges semantically) — which requires an eval harness that scores fix correctness, not error count. That is a research task, not a fixture tweak. `fixtures/forcing-shared-export-ripple/` is retained as a documented example of the limitation.
 
 ### The gap
 

@@ -753,3 +753,48 @@ remains — `skip:true` (manual paid LLM validation, SIGN-104). Per SIGN-002, th
 loop can complete: every non-skipped feature passes.
 
 ---
+
+## 2026-06-13 — T-4-7 (manual): real-LLM validation of Layer 3 — NEGATIVE result
+
+Ran the manual paid validation that the loop deliberately skipped. Used
+claude-haiku-4-5 via a throwaway `runMendLoop` driver against isolated copies of
+the forcing fixtures (~$0.007 total). **Layer 3's necessity could not be
+demonstrated.** Full writeup in ARCHITECTURE.md §13 "T-4-7 finding".
+
+**Attempt 1 — `fixtures/forcing-multifile-ripple` (the gate fixture):**
+Layer 2 ALONE reached 0 errors; Layer 3 never fired. The real single-file mend
+fixed `consumer-num.ts` locally as `Number(value) * 2`, leaving `shared.ts`
+untouched. T-4-2's "period-2 oscillation" only holds against a mock fixer that
+insists on retyping the shared declaration — a real fixer converts at the use
+site instead. **The forcing function was a strawman.**
+
+**Attempt 2 — `fixtures/forcing-shared-export-ripple` (new, harder):** a missing
+shared export `bump` that must close over module-private `counters`. NEITHER
+Layer 2 nor Layer 3 fixed it (both `noProgress`). Layer 3 can't engage: a
+*missing* symbol has no declaration, so `findReferences()` yields no blast
+radius and `shared.ts` is never pulled into scope.
+
+**The pincer (appears general):**
+1. Symbol-exists ripples (rename/signature/type) are fixable LOCALLY at each use
+   site (cast / annotation / adapter) → Layer 2 iteration converges.
+2. Symbol-missing cases put the fix in a no-error file → Layer 3's reference
+   tracing can't reach it.
+3. `@ts-expect-error` (= Layer 4) is a universal local escape to 0 errors.
+
+So under an `errorsAfter === 0` metric there is essentially no fixture that is
+both (a) unfixable by Layer 2 and (b) fixable by Layer 3.
+
+**Decision (option A):** Layer 3 is DEFERRED / UNVALIDATED. Code stays in-tree,
+dormant, opt-in (`enableLayer3`, default OFF), not on any gate, not claimed to
+work. Forcing fixtures stay `mustPass:false`. `forcing-shared-export-ripple` is
+kept as a documented limitation example. If revisited, Layer 3 must be
+re-justified on fix-QUALITY grounds (correct coordinated shared edit vs. a
+Layer-2 local hack that compiles but diverges) — needs a correctness-scoring
+eval harness, not a fixture tweak. That is future research, not Phase 4.
+
+**Lesson for the gate design:** a mocked prove-then-build gate is only as good as
+the mock's fidelity to real behavior. T-4-2 should have used a fixer model that
+prefers use-site fixes, or T-4-7 should not have been deferrable. The cheap
+(~$0.007) real run would have changed the build/defer decision had it run first.
+
+---
