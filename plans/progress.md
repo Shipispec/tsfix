@@ -798,3 +798,31 @@ prefers use-site fixes, or T-4-7 should not have been deferrable. The cheap
 (~$0.007) real run would have changed the build/defer decision had it run first.
 
 ---
+
+## 2026-06-13 — Fixture coverage hardening (Layer 1)
+
+Manual follow-up after the export-from rewriter. Probed current behavior, then
+added coverage + one safe-set widening.
+
+**TS2322 probe (the trust-model decision):** a JSX prop typo (`classNam`) surfaces
+as TS2322 and TS offers its `spelling` code-fix (already in SAFE_FIX_NAMES) — but
+TS2322 was not in SAFE_FIXABLE_CODES, so it never fired. Probed normal TS2322
+shapes (`number = string`, object-prop mismatch, return-type mismatch): TS offers
+**zero** code-fixes for all of them. So admitting TS2322, gated by SAFE_FIX_NAMES,
+only ever applies the `spelling` rename and abstains on real type errors — same
+trust model as TS2552/2551. Object-literal excess/typo props are TS2561 (not
+2322) and offer no fix — out of scope.
+
+**Shipped:**
+- Added `2322` to `SAFE_FIXABLE_CODES` (src/tsLanguageServiceFixer.ts) with the
+  safety rationale inline.
+- `fixtures/synthetic-jsx-prop-typo-ts2322` — JSX `classNam`→`className`, fixed
+  (gate). First `.tsx` fixtures in the repo.
+- `fixtures/synthetic-tsx-missing-import-ts2304` — pins that auto-import works on
+  `.tsx` and resolves the `@types/react` fallback (gate).
+- `fixtures/synthetic-autoimport-ambiguous-ts2304` — two modules export `Foo`;
+  pins that Layer 1 abstains on ambiguous auto-import (report-only).
+
+**Verified:** check-types clean; benchmark gate 8→10 (two new mustPass fixtures),
+exit 0, no regression on existing fixtures; affected unit tests pass isolated.
+The TSX fixtures use `jsx: "react-jsx"` + the `_shared` react/@types/react deps.

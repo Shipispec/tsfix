@@ -1,0 +1,8 @@
+{
+	"description": "TSX auto-import pin (added 2026-06-13, fixture-coverage hardening). 'useState' is used without an import in a .tsx file; Layer 1 auto-imports it from 'react' (via @types/react). Pins that the deterministic fixer works on .tsx (JSX) files and resolves the @types/react fallback — there were no .tsx fixtures before, so TSX support was unverified.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2304"]
+}

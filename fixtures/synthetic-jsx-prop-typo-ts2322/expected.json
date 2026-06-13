@@ -1,0 +1,8 @@
+{
+	"description": "JSX prop typo (added 2026-06-13, fixture-coverage hardening). 'classNam' is a misspelling of the DOM prop 'className'. TS reports it as TS2322 but offers its `spelling` did-you-mean code-fix; admitting TS2322 to SAFE_FIXABLE_CODES (gated by SAFE_FIX_NAMES, which only applies the trusted spelling/import names) lets Layer 1 rename it deterministically. Pins the TS2322 widening: real type mismatches offer no code-fix so the fixer abstains on them — see synthetic-* mismatch coverage and the probe in plans/progress.md.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2322"]
+}

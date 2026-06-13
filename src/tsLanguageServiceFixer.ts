@@ -46,6 +46,13 @@ import {
 const SAFE_FIXABLE_CODES = new Set<number>([
 	2304, // Cannot find name 'X'
 	2305, // Module '...' has no exported member 'X'
+	2322, // Type 'X' is not assignable to type 'Y' — admitted ONLY for the
+	//       did-you-mean case (e.g. a typo'd JSX prop `classNam`→`className`),
+	//       which TS surfaces as TS2322 with a `spelling` code-fix. Real type
+	//       mismatches (number = string, etc.) offer no code-fix at all, so the
+	//       SAFE_FIX_NAMES gate makes the fixer abstain on them — it never
+	//       touches a genuine type error, only applies the high-confidence
+	//       `spelling` rename. (Probed 2026-06-13.)
 	2551, // Property 'X' does not exist on type 'Y'. Did you mean 'Z'?
 	2552, // Cannot find name 'X'. Did you mean 'Y'?
 	2724, // '...' has no exported member named 'X'. Did you mean 'Y'?

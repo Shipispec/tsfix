@@ -1,0 +1,8 @@
+{
+	"description": "Auto-import ambiguity ABSTAIN pin (added 2026-06-13, fixture-coverage hardening). use.ts references 'Foo' unimported, and both ./a and ./b export a 'Foo'. The LSP returns two equally-valid auto-import candidates; Layer 1's fixesAreEquivalent check sees they differ and abstains rather than guess. Report-only (mustPass:false): the harness treats mustPass:true as 'must reach 0 errors', so this pins the abstain via errorsAfterMax:1 + lspFixesAppliedMax:0 — if the fixer ever guessed a candidate, this fixture would stop meeting contract.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 1,
+	"lspFixesAppliedMax": 0,
+	"mustPass": false,
+	"expectedFixerCodes": []
+}

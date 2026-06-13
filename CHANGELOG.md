@@ -4,6 +4,11 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+### Added (Layer 1 — deterministic coverage)
+- **Export-from rewriter.** TypeScript's LanguageService offers no applyable code-fix for a typo'd re-export `export { X } from "./mod"` (a close typo surfaces as TS2724 with a "Did you mean?" message, a far wrong-name as TS2305 — neither yields a fix), even though it does for the `import { X }` form. Layer 1 now fills this gap: when the re-exported name is a close typo of a real export of the target module it is renamed deterministically (no LLM). It reproduces only TypeScript's own spelling *threshold* (`distance < floor(len*0.4)+1`) via a bounded Levenshtein — not TS's fix engine — and abstains on ties, out-of-threshold wrong-names, `X as Y` aliases, and unresolved modules, so semantic wrong-names still escalate to the LLM. Pinned by `fixtures/synthetic-export-from-typo-ts2724` (fix) + `synthetic-cross-file-typo-ts2305` (abstain).
+- **JSX prop-typo fixes (TS2322).** `2322` is now in `SAFE_FIXABLE_CODES`, admitted *only* for the did-you-mean case: a typo'd JSX prop (e.g. `classNam`→`className`) surfaces as TS2322 with TypeScript's high-confidence `spelling` code-fix. Real type mismatches (`number = string`, return-type errors, etc.) offer no code-fix, so the existing `SAFE_FIX_NAMES` gate makes the fixer abstain on them — it never touches a genuine type error. Pinned by `fixtures/synthetic-jsx-prop-typo-ts2322`.
+- **TSX + auto-import coverage fixtures.** First `.tsx` fixtures: `synthetic-tsx-missing-import-ts2304` pins that the deterministic fixer works on JSX files and resolves the `@types/react` fallback; `synthetic-autoimport-ambiguous-ts2304` pins that Layer 1 abstains when an auto-import has two equally-valid candidates.
+
 ## [0.6.2] - 2026-05-23
 
 **Cosmetic patch.** No behavior change; no API surface change. Drops the stale prototype-era "TSC Defense Stack" string from CLI output (was the human-report banner header), replaced with "tsfix" to match the published package name. Surfaced while debugging a vhs demo recording — the recording would otherwise have shown stale branding above the fold. 147/147 tests still pass.
