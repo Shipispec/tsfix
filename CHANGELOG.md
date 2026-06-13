@@ -4,6 +4,9 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+### Changed
+- **CLI first-run nudge.** When errors survive the deterministic Layer 0/1 pass and `--llm` was not used, the human report now points the user at the LLM mend layer with the exact re-run command and the BYOK setup (`ANTHROPIC_API_KEY` / `--llm-provider`), instead of ending on a bare `✗ FAIL`. Makes a "fixed 2 of 9" result read as "here's how to get the rest" rather than a dead end. Output-only; no API or exit-code change. Suppressed on `--json` and `--dry-run`.
+
 ## [0.7.0] - 2026-06-13
 
 **Layer 1 coverage release.** Two new deterministic (no-LLM) fixes plus the first `.tsx` fixtures — all in the free, default Layer 0/1 path; no API surface change, no new dependencies. Head-to-head on a workspace with a typo'd re-export + a typo'd JSX prop + a baseline name typo: v0.6.2 fixed 1/3 (left TS2724 + TS2322), v0.7.0 fixes 3/3. Benchmark gate 7/7 → 10/10. Layer 3 (multi-file mend) remains built-but-dormant/opt-in and unvalidated (see ARCHITECTURE.md §13); this release does not change that.

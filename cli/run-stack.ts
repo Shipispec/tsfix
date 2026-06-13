@@ -226,7 +226,7 @@ function makeLogger(captureLines: string[], verbose: boolean) {
 	};
 }
 
-function printHumanReport(r: StackReport): void {
+function printHumanReport(r: StackReport, workspaceArg: string): void {
 	const w = process.stderr;
 	w.write(`\ntsfix — ${r.workspace}${r.dryRun ? " (dry-run)" : ""}\n`);
 	w.write(`  errors before: ${r.errorsBefore}\n`);
@@ -262,7 +262,19 @@ function printHumanReport(r: StackReport): void {
 		}
 	}
 	w.write(`  elapsed:       ${r.elapsedMs}ms\n`);
-	w.write(`  ${r.passed ? "✓ PASS" : "✗ FAIL"}\n\n`);
+	w.write(`  ${r.passed ? "✓ PASS" : "✗ FAIL"}\n`);
+	// First-run nudge: errors survived the deterministic layer and Layer 2 was
+	// not attempted (no --llm). These are the semantic errors the free layer
+	// can't touch — point the user at the LLM mend layer + the BYOK setup so a
+	// "fixed 2 of 9" result doesn't read as a dead end.
+	if (r.errorsAfter > 0 && !r.layer2 && !r.dryRun) {
+		w.write(`\n  ${r.errorsAfter} error(s) need semantic repair beyond deterministic quick-fixes.\n`);
+		w.write(`  → escalate to the LLM mend layer (Layer 2) — re-run with --llm:\n`);
+		w.write(`      npx @shipispec/tsfix --workspace ${workspaceArg} --llm\n`);
+		w.write(`    Needs a provider key in your env: ANTHROPIC_API_KEY (default), or\n`);
+		w.write(`    --llm-provider openai|google with its key. ~$0.005/file on claude-haiku-4-5.\n`);
+	}
+	w.write(`\n`);
 }
 
 async function main(): Promise<number> {
@@ -410,7 +422,7 @@ async function main(): Promise<number> {
 	if (args.json) {
 		process.stdout.write(JSON.stringify(report, null, 2) + "\n");
 	} else {
-		printHumanReport(report);
+		printHumanReport(report, args.workspace);
 	}
 
 	// Exit code precedence: budget exceeded (3) > errors remain (1) > clean (0).
