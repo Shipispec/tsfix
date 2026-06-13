@@ -1,0 +1,43 @@
+name: publish
+
+# Publish to npm on a version tag push (e.g. `git tag v0.6.3 && git push --tags`).
+# Requires the `NPM_TOKEN` repo secret (an npm automation/granular token with
+# publish rights to @shipispec). Until that secret exists the workflow simply
+# fails on the publish step — it never runs on PRs or normal pushes.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+
+      # Same lockfile workaround as test.yml: the committed lockfile is
+      # generated on macOS and omits `@rollup/rollup-linux-x64-gnu` (npm bug
+      # 4828), so force a fresh resolve on the Linux runner.
+      - run: rm -f package-lock.json && npm install
+
+      # Deterministic gate before we publish — never ship a red build. Mirrors
+      # test.yml's free/deterministic checks (skips the paid LLM benchmark and
+      # the slow matrix; those guard PRs, not releases).
+      - name: Verify (check-types + tests + benchmark)
+        run: npm run check-types && npm test && npm run benchmark
+
+      # `npm publish` also runs `prepack` (which builds dist/); the explicit
+      # build keeps the artifact obvious and independent of that hook.
+      - name: Build
+        run: npm run build
+
+      - name: Publish to npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

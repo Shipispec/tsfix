@@ -130,24 +130,21 @@ No bundled fallback. The lib-path bug is the reason the bet works; bundling our 
 
 ---
 
-### 1b — CI (GitHub Actions)
+### 1b — CI (GitHub Actions) ✅ (`test.yml` v0.2.0; `publish.yml` 2026-06-13)
 Two workflows:
 
-**`test.yml`** — runs on every PR:
-```
-- npm ci
-- npm run test         (vitest)
-- npm run benchmark    (14-fixture harness)
-```
-Fail if any fixture regresses. This makes the fixture set the real CI gate.
+**`test.yml`** ✅ — runs on every PR + push to main: `check-types`, `npm test`
+(vitest), `npm run benchmark` (synthetic gate), `npm run matrix` (6 cold tarball
+shapes), and the LLM benchmark gated on `ANTHROPIC_API_KEY`. Fail if any fixture
+regresses — the fixture set is the real CI gate.
 
-**`publish.yml`** — runs on tag push `v*`:
-```
-- npm run build:cli
-- npm publish --access public
-```
+**`publish.yml`** ✅ (2026-06-13) — runs on tag push `v*`: fresh install →
+deterministic gate (`check-types && test && benchmark`) → `npm run build` →
+`npm publish --access public`. Auth via the `NPM_TOKEN` repo secret (npm
+automation/granular token). Until that secret is set, the workflow only fails on
+the final publish step; it never runs on PRs/normal pushes.
 
-**Why this matters for OSS:** Without CI, contributors have no feedback loop. With it, adding a new fixture = adding a CI test automatically (the benchmark auto-discovers fixtures).
+**Why this matters for OSS:** Without CI, contributors have no feedback loop. With it, adding a new fixture = adding a CI test automatically (the benchmark auto-discovers fixtures), and a tagged release publishes itself instead of relying on a manual `npm publish`.
 
 ---
 
