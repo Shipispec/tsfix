@@ -14,3 +14,6 @@ fixtures/_shared/node_modules/
 
 # Ralph loop fresh-context run logs (local only; loop state lives under gitignored .claude/)
 scripts/ralph/runs/
+
+# Local-only scratch notes (e.g. RELEASE-TODO.local.md) — never committed
+*.local.md
