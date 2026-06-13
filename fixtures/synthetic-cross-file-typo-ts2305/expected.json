@@ -1,5 +1,5 @@
 {
-	"description": "Cross-file: math.ts exports addTwo. calc.ts uses an export-from with the wrong name ('addOne'). DOCUMENTED LIMITATION (probed 2026-05-03): for `export { X } from './path'` the TS LanguageService returns zero code fixes for TS2305 — even though it does for the import-from form. The fix path lives in the mend layer until/unless we add a custom export-from rewriter. consumer.ts imports the correct name directly so the rename has no ripple.",
+	"description": "Cross-file export-from ABSTAIN pin for the Layer 1 export-from rewriter (repurposed 2026-06-13). math.ts exports 'addTwo'; calc.ts re-exports 'addOne'. That is edit distance 3 — beyond TS's own did-you-mean threshold (< floor(len*0.4)+1, i.e. <= 2 for a 6-char name) — so TS emits TS2305 (no suggestion) and it's a semantic *wrong-name*, not a fat-finger typo. The rewriter MUST abstain and leave the error to escalate to Layer 2 (LLM). Report-only (mustPass:false): the harness treats mustPass:true as 'must reach 0 errors', so this pin gates its abstain via errorsAfterMax:1 + lspFixesAppliedMax:0 in the report-only contract — if the rewriter over-reached and renamed to the plausible-but-wrong 'addTwo', this fixture would stop meeting contract. See the success path in synthetic-export-from-typo-ts2724.",
 	"errorsBefore": 1,
 	"errorsAfterMax": 1,
 	"lspFixesAppliedMax": 0,

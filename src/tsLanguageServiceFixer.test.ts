@@ -1,9 +1,13 @@
 import { describe, it, expect } from "vitest";
-import type * as ts from "typescript";
+import * as ts from "typescript";
 import {
 	applyFixToSnapshots,
+	buildExportFromFix,
 	computeErrorSignatures,
+	detectExportFromTypo,
+	editDistanceWithin,
 	fixesAreEquivalent,
+	pickExportRename,
 	signatureSetsEqual,
 } from "./tsLanguageServiceFixer.js";
 
@@ -186,5 +190,84 @@ describe("signatureSetsEqual", () => {
 
 	it("returns true for two empty sets (vacuous case at iteration 1)", () => {
 		expect(signatureSetsEqual(new Set(), new Set())).toBe(true);
+	});
+});
+
+describe("editDistanceWithin", () => {
+	it("returns the exact distance when within budget", () => {
+		expect(editDistanceWithin("addTwoo", "addTwo", 2)).toBe(1);
+		expect(editDistanceWithin("adTwo", "addTwo", 2)).toBe(1);
+		expect(editDistanceWithin("abc", "abc", 2)).toBe(0);
+		expect(editDistanceWithin("kitten", "sitting", 3)).toBe(3);
+	});
+
+	it("returns null once the distance provably exceeds the budget", () => {
+		expect(editDistanceWithin("addOne", "addTwo", 2)).toBeNull(); // distance 3
+		expect(editDistanceWithin("kitten", "sitting", 2)).toBeNull(); // distance 3
+		expect(editDistanceWithin("abc", "abcdef", 2)).toBeNull(); // length gap > max
+	});
+});
+
+describe("pickExportRename", () => {
+	it("returns the unique close match within TS's spelling threshold", () => {
+		expect(pickExportRename("addTwoo", ["addTwo"])).toBe("addTwo");
+		expect(pickExportRename("adTwo", ["addTwo"])).toBe("addTwo");
+		// far candidates are filtered, leaving one within threshold
+		expect(pickExportRename("cat", ["bat", "dog"])).toBe("bat");
+	});
+
+	it("abstains when the name already exists (not a typo)", () => {
+		expect(pickExportRename("addTwo", ["addTwo", "addOne"])).toBeNull();
+	});
+
+	it("abstains when nothing is within TS's threshold (wrong-name, not typo)", () => {
+		// addOne -> addTwo is edit distance 3, beyond floor(6*0.4)=2.
+		expect(pickExportRename("addOne", ["addTwo"])).toBeNull();
+	});
+
+	it("abstains on a tie at the minimum distance (ambiguous)", () => {
+		// 'cat' (maxDist 1) is distance 1 from both 'bat' and 'car'.
+		expect(pickExportRename("cat", ["bat", "car"])).toBeNull();
+	});
+});
+
+describe("detectExportFromTypo", () => {
+	const at = (code: string, needle: string) => {
+		const sf = ts.createSourceFile("calc.ts", code, ts.ScriptTarget.Latest, /*setParentNodes*/ true);
+		return detectExportFromTypo(sf, code.indexOf(needle));
+	};
+
+	it("detects a plain `export { X } from \"./mod\"` re-export", () => {
+		const got = at(`export { addTwoo } from "./math";`, "addTwoo");
+		expect(got?.typoName).toBe("addTwoo");
+		expect(got?.moduleSpecifier.text).toBe("./math");
+	});
+
+	it("returns null for a local `export { X }` (no module specifier)", () => {
+		expect(at(`export { addTwoo };`, "addTwoo")).toBeNull();
+	});
+
+	it("returns null for an aliased `export { X as Y } from ...` (out of scope)", () => {
+		expect(at(`export { addTwoo as f } from "./math";`, "addTwoo")).toBeNull();
+	});
+
+	it("picks the correct specifier among several", () => {
+		const got = at(`export { a, addTwoo, c } from "./math";`, "addTwoo");
+		expect(got?.typoName).toBe("addTwoo");
+	});
+});
+
+describe("buildExportFromFix + applyFixToSnapshots", () => {
+	it("replaces only the identifier span, leaving the module specifier intact", () => {
+		const content = `export { addTwoo } from "./math";`;
+		const start = content.indexOf("addTwoo");
+		const snapshots = new Map([["/repo/calc.ts", { content, version: 1 }]]);
+		const fix = buildExportFromFix("/repo/calc.ts", { start, length: "addTwoo".length }, "addTwo");
+
+		const applied = applyFixToSnapshots(fix, snapshots);
+
+		expect(applied).toBe(1);
+		expect(snapshots.get("/repo/calc.ts")?.content).toBe(`export { addTwo } from "./math";`);
+		expect(snapshots.get("/repo/calc.ts")?.version).toBe(2);
 	});
 });

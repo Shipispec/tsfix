@@ -62,9 +62,9 @@ Add signs below as you encounter project-specific failure patterns:
 
 ### SIGN-101: Every New Error Code or Fix Name Needs a Fixture
 **Trigger:** Adding to `SAFE_FIXABLE_CODES` / `SAFE_FIX_NAMES`, or supporting a new TS error code anywhere
-**Instruction:** Add a fixture under `fixtures/` that exercises it, and confirm `npm run benchmark` covers it. Never widen the safe set without a pin.
-**Reason:** The trust model is only as good as its fixtures (ARCHITECTURE.md invariant). Untested fix paths silently corrupt user code.
-**Added after:** Seed (2026-06-10)
+**Instruction:** Add a fixture under `fixtures/` that exercises it, and confirm `npm run benchmark` covers it. Never widen the safe set without a pin. For a fix path that can *abstain* (judgment call), pin BOTH the success and the abstain — a success fixture (`mustPass:true`, errorsAfter 0) and a report-only abstain pin (`mustPass:false` with `errorsAfterMax`/`lspFixesAppliedMax`, since the harness treats `mustPass:true` as "must reach 0 errors").
+**Reason:** The trust model is only as good as its fixtures (ARCHITECTURE.md invariant). Untested fix paths silently corrupt user code; an unpinned abstain path silently over-reaches.
+**Added after:** Seed (2026-06-10); abstain-pin clause after the export-from rewriter (2026-06-13: `synthetic-export-from-typo-ts2724` = fix, `synthetic-cross-file-typo-ts2305` = abstain).
 
 ### SIGN-102: Never Bundle TypeScript
 **Trigger:** Touching the build, the host abstraction, or imports of `typescript` (especially the Phase 3c shared-Program work)

@@ -281,38 +281,24 @@ export function runLSPFixerPass(opts: LSPFixerOptions): LSPFixerResult {
 		let appliedThisIter = 0;
 		for (const err of fixableErrors) {
 			const errStartMs = Date.now();
-			const fixes = safeGetCodeFixes(service, err);
-			if (!fixes || fixes.length === 0) {
+			let fix = pickSafeTsFix(service, err);
+			// Fallback: TypeScript's LanguageService provides *no applyable code-fix*
+			// for a typo'd re-export `export { X } from "./mod"`, even though it does
+			// for the `import { X }` form. A close typo surfaces as TS2724 (with a
+			// "did you mean?" message but no fix); a far wrong-name as TS2305 (no
+			// suggestion). We synthesize a conservative rename using the same
+			// edit-distance threshold TS uses — so we fix the close TS2724 case and
+			// abstain on the far TS2305 case. Only a fallback; never overrides TS.
+			if (!fix && (err.code === 2724 || err.code === 2305)) {
+				fix = tryExportFromRewrite(service, err);
+			}
+			if (!fix) {
 				onLayerEvent?.({
 					layer: 1, errorCode: err.code, fixed: false,
 					latencyMs: Date.now() - errStartMs, ts: Date.now(),
 				});
 				continue;
 			}
-			// Pick the safest applicable fix:
-			// 1. Filter to only fixes whose `fixName` is in SAFE_FIX_NAMES.
-			//    This rules out destructive alternatives like
-			//    `fixMissingFunctionDeclaration` (declares a stub) which TS
-			//    suggests alongside `import` for TS2304.
-			// 2. If multiple safe fixes remain and they're not textually
-			//    equivalent, skip — genuine ambiguity (e.g., import from
-			//    package A vs package B).
-			const safeFixes = fixes.filter((f) => SAFE_FIX_NAMES.has(f.fixName));
-			if (safeFixes.length === 0) {
-				onLayerEvent?.({
-					layer: 1, errorCode: err.code, fixed: false,
-					latencyMs: Date.now() - errStartMs, ts: Date.now(),
-				});
-				continue;
-			}
-			if (safeFixes.length > 1 && !fixesAreEquivalent(safeFixes)) {
-				onLayerEvent?.({
-					layer: 1, errorCode: err.code, fixed: false,
-					latencyMs: Date.now() - errStartMs, ts: Date.now(),
-				});
-				continue;
-			}
-			const fix = safeFixes[0];
 			const applied = applyFixToSnapshots(fix, snapshots);
 			if (applied > 0) {
 				appliedThisIter++;
@@ -478,6 +464,241 @@ function safeGetCodeFixes(
 	} catch {
 		return null;
 	}
+}
+
+/**
+ * Pick the single safe code-fix TypeScript offers for an error, or null.
+ *
+ * 1. Filter to fixes whose `fixName` is in SAFE_FIX_NAMES — rules out
+ *    destructive alternatives like `fixMissingFunctionDeclaration` (declares a
+ *    stub) that TS suggests alongside `import` for TS2304.
+ * 2. If multiple safe fixes remain and they're not textually equivalent, skip —
+ *    genuine ambiguity (e.g. import from package A vs B). Abstain over guessing.
+ */
+function pickSafeTsFix(
+	service: ts.LanguageService,
+	err: { file: string; start: number; length: number; code: number },
+): ts.CodeFixAction | null {
+	const fixes = safeGetCodeFixes(service, err);
+	if (!fixes || fixes.length === 0) {
+		return null;
+	}
+	const safeFixes = fixes.filter((f) => SAFE_FIX_NAMES.has(f.fixName));
+	if (safeFixes.length === 0) {
+		return null;
+	}
+	if (safeFixes.length > 1 && !fixesAreEquivalent(safeFixes)) {
+		return null;
+	}
+	return safeFixes[0];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Export-from rewriter (Layer 1 fallback for TS2305 in `export { X } from "..."`)
+//
+// TS's LanguageService returns a "did you mean?" rename code-fix for the
+// `import { X } from "./mod"` form but NOT for the re-export `export { X } from
+// "./mod"` form. This fallback fills that gap deterministically: when the
+// re-exported name is a *close* typo (within TS's own spelling threshold) of a
+// real export of the target module, rename it. Conservative by design — it
+// abstains on out-of-threshold names, ties, aliases, and unresolved modules, so
+// semantic wrong-names still escalate to the LLM (Layer 2).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * @internal Levenshtein edit distance between `a` and `b`, bounded by `max`:
+ * returns the exact distance when it is `<= max`, or `null` once it provably
+ * exceeds `max` (so callers can early-reject far candidates cheaply).
+ */
+export function editDistanceWithin(a: string, b: string, max: number): number | null {
+	if (Math.abs(a.length - b.length) > max) {
+		return null;
+	}
+	const m = a.length;
+	const n = b.length;
+	let prev = new Array<number>(n + 1);
+	let curr = new Array<number>(n + 1);
+	for (let j = 0; j <= n; j++) {
+		prev[j] = j;
+	}
+	for (let i = 1; i <= m; i++) {
+		curr[0] = i;
+		let rowMin = curr[0];
+		for (let j = 1; j <= n; j++) {
+			const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+			curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+			if (curr[j] < rowMin) {
+				rowMin = curr[j];
+			}
+		}
+		// Whole row already exceeds the budget — distance can only grow.
+		if (rowMin > max) {
+			return null;
+		}
+		[prev, curr] = [curr, prev];
+	}
+	const dist = prev[n];
+	return dist <= max ? dist : null;
+}
+
+/**
+ * @internal Pick the unique closest export name to a typo'd one, or null when
+ * unsure. Mirrors TypeScript's own did-you-mean threshold
+ * (`distance < floor(len*0.4)+1`, i.e. `<= floor(len*0.4)`) so we are never less
+ * conservative than TS. Abstains when the name already exists (not a typo), when
+ * nothing is within threshold, or when two candidates tie at the minimum
+ * distance (ambiguous).
+ */
+export function pickExportRename(typoName: string, candidateNames: readonly string[]): string | null {
+	if (candidateNames.includes(typoName)) {
+		return null; // exists — not a typo; don't rewrite
+	}
+	const maxDist = Math.floor(typoName.length * 0.4);
+	if (maxDist < 1) {
+		return null; // too short for a confident suggestion
+	}
+	let best: string | null = null;
+	let bestDist = Infinity;
+	let tieAtBest = false;
+	for (const cand of candidateNames) {
+		const d = editDistanceWithin(typoName, cand, maxDist);
+		if (d === null) {
+			continue;
+		}
+		if (d < bestDist) {
+			bestDist = d;
+			best = cand;
+			tieAtBest = false;
+		} else if (d === bestDist) {
+			tieAtBest = true;
+		}
+	}
+	if (best === null || tieAtBest) {
+		return null; // nothing close enough, or ambiguous
+	}
+	return best;
+}
+
+/** @internal Deepest AST node whose span contains `pos`. */
+function findNodeAtPosition(sourceFile: ts.SourceFile, pos: number): ts.Node | undefined {
+	const find = (node: ts.Node): ts.Node | undefined => {
+		if (pos < node.getStart(sourceFile) || pos >= node.getEnd()) {
+			return undefined;
+		}
+		return ts.forEachChild(node, find) ?? node;
+	};
+	return find(sourceFile);
+}
+
+/**
+ * @internal Detect that a TS2305 at `start` sits on the re-exported name of a
+ * plain `export { X } from "./mod"` (with a module specifier, no `X as Y`
+ * alias). Returns the name node + enclosing declaration, or null to abstain.
+ */
+export function detectExportFromTypo(
+	sourceFile: ts.SourceFile,
+	start: number,
+): {
+	nameNode: ts.Identifier;
+	typoName: string;
+	moduleSpecifier: ts.StringLiteral;
+} | null {
+	const node = findNodeAtPosition(sourceFile, start);
+	if (!node) {
+		return null;
+	}
+	let n: ts.Node | undefined = node;
+	while (n && !ts.isExportSpecifier(n)) {
+		n = n.parent;
+	}
+	if (!n || !ts.isExportSpecifier(n)) {
+		return null;
+	}
+	const specifier = n;
+	if (specifier.propertyName) {
+		return null; // `X as Y` alias — out of scope for v1
+	}
+	// In modern TS `specifier.name` is a ModuleExportName (Identifier | string
+	// literal). Only the identifier form is a rename candidate.
+	if (!ts.isIdentifier(specifier.name)) {
+		return null;
+	}
+	const named = specifier.parent;
+	if (!ts.isNamedExports(named)) {
+		return null;
+	}
+	const exportDecl = named.parent;
+	if (!ts.isExportDeclaration(exportDecl)) {
+		return null;
+	}
+	if (!exportDecl.moduleSpecifier || !ts.isStringLiteral(exportDecl.moduleSpecifier)) {
+		return null; // local `export { X }` (no `from`) — different error class
+	}
+	return {
+		nameNode: specifier.name,
+		typoName: specifier.name.text,
+		moduleSpecifier: exportDecl.moduleSpecifier,
+	};
+}
+
+/** @internal A synthetic single-edit rename, shaped like a `ts.CodeFixAction`. */
+export function buildExportFromFix(
+	fileName: string,
+	span: { start: number; length: number },
+	newName: string,
+): ts.CodeFixAction {
+	return {
+		fixName: "exportFromSpelling",
+		description: `Change re-exported name to '${newName}'`,
+		changes: [
+			{
+				fileName,
+				textChanges: [{ span: { start: span.start, length: span.length }, newText: newName }],
+			},
+		],
+	} as ts.CodeFixAction;
+}
+
+/**
+ * Fallback rewriter for TS2305 in a re-export. Resolves the target module's
+ * actual exports via the type checker and, if the typo'd name has a unique close
+ * match, returns a synthetic rename fix. Returns null (abstain) on any
+ * uncertainty. Applied via the same `applyFixToSnapshots` path as TS's own fixes.
+ */
+function tryExportFromRewrite(
+	service: ts.LanguageService,
+	err: { file: string; start: number; length: number; code: number },
+): ts.CodeFixAction | null {
+	const program = service.getProgram();
+	if (!program) {
+		return null;
+	}
+	const sourceFile = program.getSourceFile(err.file);
+	if (!sourceFile) {
+		return null;
+	}
+	const detected = detectExportFromTypo(sourceFile, err.start);
+	if (!detected) {
+		return null;
+	}
+	const checker = program.getTypeChecker();
+	const moduleSym = checker.getSymbolAtLocation(detected.moduleSpecifier);
+	if (!moduleSym) {
+		return null; // module didn't resolve (path alias, bare pkg, etc.) — abstain
+	}
+	const candidateNames = checker
+		.getExportsOfModule(moduleSym)
+		.map((s) => s.getName())
+		.filter((nm) => nm !== "default");
+	const newName = pickExportRename(detected.typoName, candidateNames);
+	if (!newName) {
+		return null;
+	}
+	const span = {
+		start: detected.nameNode.getStart(sourceFile),
+		length: detected.nameNode.getWidth(sourceFile),
+	};
+	return buildExportFromFix(err.file, span, newName);
 }
 
 /**

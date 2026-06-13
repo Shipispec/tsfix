@@ -1,0 +1,8 @@
+{
+	"description": "Cross-file export-from typo (SUCCESS path for the Layer 1 export-from rewriter, added 2026-06-13). math.ts exports 'addTwo'; calc.ts re-exports the misspelled 'addTwoo' (edit distance 1) via `export { addTwoo } from \"./math\"`. A close typo surfaces as TS2724 ('has no exported member named ... Did you mean ...?') — TS knows the intended name but provides no applyable code-fix for the export-from form. The deterministic export-from rewriter renames it to the unique close match within TS's own spelling threshold. consumer.ts imports the correct name directly so there is no ripple.",
+	"errorsBefore": 1,
+	"errorsAfterMax": 0,
+	"lspFixesAppliedMin": 1,
+	"mustPass": true,
+	"expectedFixerCodes": ["TS2724"]
+}
