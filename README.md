@@ -244,7 +244,7 @@ The mend-quality gains landed in v0.6.0 (library-migrations, crash hardening, an
 | [`ian-craig/ts-autofix`](https://github.com/ian-craig/ts-autofix) | apply tsc codefixes | ✓ | — | — | last commit Sep 2022 |
 | [`airbnb/ts-migrate`](https://github.com/airbnb/ts-migrate) | JS → TS migration *(different job)* | ✓ | — | — | Nov 2022 (npm) |
 | [`@2bad/tsfix`](https://www.npmjs.com/package/@2bad/tsfix) | ESM extension fixer | ✓ | — | — | npm-deprecated → `tsdown` |
-| **`@shipispec/tsfix`** | **TS error → working code** | **✓ Layer 0/1** | **✓ Layer 2 (opt-in)** | **✓** | **active (v0.6.2, 2026-05-23)** |
+| **`@shipispec/tsfix`** | **TS error → working code** | **✓ Layer 0/1** | **✓ Layer 2 (opt-in)** | **✓** | **active (v0.7.0, 2026-06-13)** |
 
 The category has shape: a couple of dormant tsc-codefix wrappers (one from Microsoft, never published to npm), a deprecated ESM-extension tool, and ts-migrate (a different job — JS→TS migration). tsfix is the only living, npm-published, library-aware option that combines a deterministic LSP layer with an opt-in LLM mend layer.
 
