@@ -58,7 +58,7 @@
 		"prebenchmark": "npm run setup-fixtures",
 		"pretest": "npm run setup-fixtures",
 		"benchmark": "tsx benchmark/run-benchmark.ts",
-		"benchmark:llm": "tsx benchmark/run-llm-benchmark.ts",
+		"benchmark:llm": "tsx --env-file-if-exists=.env benchmark/run-llm-benchmark.ts",
 		"run-stack": "tsx cli/run-stack.ts",
 		"test": "vitest run",
 		"check-types": "tsc --noEmit"

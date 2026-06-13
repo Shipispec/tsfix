@@ -6,3 +6,11 @@ fixtures/_shared/node_modules/
 *.log
 *.tgz
 .claude/
+
+# Local secrets (API keys for the paid LLM layers/benchmark) — never commit
+.env
+.env.*
+!.env.example
+
+# Ralph loop fresh-context run logs (local only; loop state lives under gitignored .claude/)
+scripts/ralph/runs/
