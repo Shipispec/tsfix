@@ -24,7 +24,7 @@ That's the one-sentence pitch. The rest of the package is a careful, layered, co
 
 ## The layers, opt-in by layer
 
-- **Layer 1 (default, deterministic)** — Auto-fix typos, missing imports, and did-you-mean errors via the same TypeScript Language Service that powers VS Code's "Quick Fix" lightbulb. Zero network, zero LLM cost, zero config. Catches roughly half of LLM-generated TS errors before you ever pay for an LLM call.
+- **Layer 1 (default, deterministic)** — Auto-fix typos, missing imports, and did-you-mean errors via the same TypeScript Language Service that powers VS Code's "Quick Fix" lightbulb. Zero network, zero LLM cost, zero config. Catches roughly half of LLM-generated TS errors before you ever pay for an LLM call — including two cases TypeScript's own Quick Fix misses: typo'd **re-exports** (`export { X } from "./mod"`) and **JSX prop typos** (`classNam`→`className`). Stays conservative — abstains on anything ambiguous so it never rewrites intent.
 - **Layer 2 (opt-in via `--llm`)** — Single-file LLM mend via the Vercel AI SDK. Multi-provider: **Anthropic / OpenAI / Google** (`--llm-provider`). Library-aware (above). Driven by **type-context injection** — when tsc says *"Property 'foo' doesn't exist on type 'Bar'"*, tsfix resolves `Bar`'s declaration via the TypeChecker and feeds its source to the model. That's the architectural moat: every other LLM-driven repair tool uses generic grep or repo-maps.
 - **Layer 4 (library-only, opt-in via `runMendLoop({stubOnFailure: true})`)** — Escape hatch. When Layer 2 can't resolve the last few errors, inserts `// @ts-expect-error - tsfix: ...` directives that self-destruct once the underlying issue is fixed elsewhere. tsfix never leaves the workspace worse than it found it.
 
@@ -150,12 +150,15 @@ npx --yes @shipispec/tsfix --workspace .
 | TS code | Meaning | What tsfix does |
 |---|---|---|
 | `TS2304` | Cannot find name | Auto-imports |
-| `TS2305` | Module has no exported member | Did-you-mean rename |
+| `TS2305` | Module has no exported member | Did-you-mean rename — for `import { X }` **and `export { X } from "./mod"`** |
+| `TS2322` | Type not assignable (incl. JSX prop typos) | Spelling fix for did-you-mean props, e.g. `classNam`→`className` (real type mismatches are left for Layer 2) |
 | `TS2551` | Property does not exist on T, did you mean Y | Spelling fix |
 | `TS2552` | Cannot find name, did you mean Y | Spelling fix |
-| `TS2724` | Module member did-you-mean | Import rename |
+| `TS2724` | Module member did-you-mean | Rename — for `import { X }` **and `export { X } from "./mod"`** |
 
-Against a 14-fixture benchmark spanning typos, did-you-mean cases, multi-file ripples, and 4 API-drift scenarios: **14/14 fixtures pass and 14/25 errors are auto-fixed (56%).** The remaining errors are intentionally outside Layer 0's scope and escape to Layer 2.
+Two of these are gap-fills for cases TypeScript's own Quick Fix engine *won't* touch: a typo'd **re-export** (`export { X } from "./mod"`) yields no LSP code-fix even though the `import` form does, and **JSX prop typos** surface as `TS2322` which the deterministic set didn't previously claim. Both are fixed within TypeScript's own spelling threshold and abstain on anything ambiguous.
+
+Against the deterministic fixture suite, **all 10 must-pass fixtures are green** (`npm run benchmark`), plus report-only fixtures that track abstain-correctly and known-hard cases. In-scope error classes above are auto-fixed with zero LLM cost; everything else is intentionally out of Layer 0/1's scope and escapes to Layer 2.
 
 ## What Layer 0 does *not* fix (Layer 2 picks these up)
 
@@ -233,7 +236,7 @@ Measured against a 34-fixture corpus drawn from real LLM-repair failures in adja
 | Cost per full bench | — | **$0.21** | — |
 | Cost per case (`claude-haiku-4-5`) | — | **<$0.005** | — |
 
-The mend-quality gains landed in v0.6.0 (library-migrations, crash hardening, anti-patterns); v0.6.1 adds multi-provider + telemetry without changing these numbers. Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is the deferred answer.
+The mend-quality gains landed in v0.6.0 (library-migrations, crash hardening, anti-patterns); v0.6.1 adds multi-provider + telemetry without changing these numbers. Multi-file scenarios remain the gap — Layer 3 (multi-file mend with `findReferences`-driven blast-radius search) is **implemented but experimental and off by default** (`enableLayer3`); real-LLM validation hasn't yet shown it beats Layer 2's per-file iteration on an error-count metric, so it isn't enabled by default. See ARCHITECTURE.md §13.
 
 ## How tsfix differs from adjacent tools
 
@@ -256,7 +259,7 @@ Layer 1 — Deterministic     (this package: LSP auto-fix, CLI default)
 Layer 2 — Single-file LLM   (this package: opt-in via --llm or runMendLoop)
 Layer 4 — Stub-and-continue (this package: opt-in escape hatch, @ts-expect-error)
 ─────────────────────────────────────────────────────────────────
-Layer 3 — Multi-file LLM    (planned: blast-radius search/replace via findReferences)
+Layer 3 — Multi-file LLM    (experimental, off by default: blast-radius search/replace via findReferences)
 ```
 
 The bet: roughly half of TypeScript errors in LLM output are deterministically fixable. By catching them in Layer 1 you dodge the LLM tax (latency, cost, nondeterminism) on the easy half. Layer 2 takes the other half — but only when you explicitly invoke it. Layer 4 makes sure the workspace is never left worse than it started.
