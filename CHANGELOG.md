@@ -4,6 +4,10 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-13
+
+**UX patch.** No API or behavior change to the fix logic — improves the CLI's first-run experience so a no-key run doesn't read as a dead end.
+
 ### Changed
 - **CLI first-run nudge.** When errors survive the deterministic Layer 0/1 pass and `--llm` was not used, the human report now points the user at the LLM mend layer with the exact re-run command and the BYOK setup (`ANTHROPIC_API_KEY` / `--llm-provider`), instead of ending on a bare `✗ FAIL`. Makes a "fixed 2 of 9" result read as "here's how to get the rest" rather than a dead end. Output-only; no API or exit-code change. Suppressed on `--json` and `--dry-run`.
 
