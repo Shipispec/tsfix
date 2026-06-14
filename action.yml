@@ -1,0 +1,118 @@
+name: 'tsfix'
+description: 'Repair TypeScript errors in LLM-generated code — deterministic VS Code Quick Fix (free) + optional library-aware LLM mend.'
+author: 'shipispec'
+branding:
+  icon: 'tool'
+  color: 'blue'
+
+inputs:
+  workspace:
+    description: 'Path to the workspace (must contain tsconfig.json). Default: repo root.'
+    required: false
+    default: '.'
+  files:
+    description: 'Comma-separated files to scope the check/fix to. Default: all .ts/.tsx under workspace.'
+    required: false
+    default: ''
+  llm:
+    description: 'Enable Layer 2 LLM mend on errors that survive the deterministic layer. Requires a provider API key in env. Default: false (free, deterministic only).'
+    required: false
+    default: 'false'
+  llm-provider:
+    description: 'anthropic | openai | google. Only used when llm=true.'
+    required: false
+    default: 'anthropic'
+  llm-model:
+    description: 'Model name (defaults per provider). Only used when llm=true.'
+    required: false
+    default: ''
+  llm-budget-usd:
+    description: 'Soft USD cost cap for Layer 2; the run exits non-zero if exceeded.'
+    required: false
+    default: ''
+  version:
+    description: 'tsfix version / npm dist-tag to run. Default: latest.'
+    required: false
+    default: 'latest'
+  fail-on-error:
+    description: 'Fail the step if errors remain after all enabled layers. Set "false" for report-only (still sets outputs).'
+    required: false
+    default: 'true'
+
+outputs:
+  errors-before:
+    description: 'Error count before any fix.'
+    value: ${{ steps.tsfix.outputs.errors-before }}
+  errors-after:
+    description: 'Error count after all enabled layers.'
+    value: ${{ steps.tsfix.outputs.errors-after }}
+  fixes-applied:
+    description: 'Deterministic (Layer 1) fixes applied.'
+    value: ${{ steps.tsfix.outputs.fixes-applied }}
+  passed:
+    description: '"true" if zero errors remain.'
+    value: ${{ steps.tsfix.outputs.passed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - id: tsfix
+      shell: bash
+      # Inputs are passed via env (not interpolated into the script) to avoid
+      # shell-injection. The CLI writes its JSON report to stdout and human logs
+      # to stderr; we capture stdout, set step outputs, and honor fail-on-error.
+      env:
+        TSFIX_WORKSPACE: ${{ inputs.workspace }}
+        TSFIX_FILES: ${{ inputs.files }}
+        TSFIX_LLM: ${{ inputs.llm }}
+        TSFIX_LLM_PROVIDER: ${{ inputs.llm-provider }}
+        TSFIX_LLM_MODEL: ${{ inputs.llm-model }}
+        TSFIX_LLM_BUDGET: ${{ inputs.llm-budget-usd }}
+        TSFIX_VERSION: ${{ inputs.version }}
+        TSFIX_FAIL_ON_ERROR: ${{ inputs.fail-on-error }}
+      run: |
+        set -uo pipefail
+        args=( --workspace "$TSFIX_WORKSPACE" --json )
+        [ -n "$TSFIX_FILES" ] && args+=( --files "$TSFIX_FILES" )
+        if [ "$TSFIX_LLM" = "true" ]; then
+          args+=( --llm --llm-provider "$TSFIX_LLM_PROVIDER" )
+          [ -n "$TSFIX_LLM_MODEL" ] && args+=( --llm-model "$TSFIX_LLM_MODEL" )
+          [ -n "$TSFIX_LLM_BUDGET" ] && args+=( --llm-budget-usd "$TSFIX_LLM_BUDGET" )
+        fi
+        echo "::group::tsfix run"
+        echo "npx -y @shipispec/tsfix@${TSFIX_VERSION} ${args[*]}"
+        # stdout = JSON report (captured); stderr = human logs (streamed to the runner log).
+        report=$(npx -y "@shipispec/tsfix@${TSFIX_VERSION}" "${args[@]}")
+        code=$?
+        echo "::endgroup::"
+        echo "$report"
+
+        before=""; after=""; fixes="0"; passed="false"
+        if echo "$report" | jq -e . >/dev/null 2>&1; then
+          before=$(echo "$report" | jq -r '.errorsBefore // empty')
+          after=$(echo "$report" | jq -r '.errorsAfter // empty')
+          fixes=$(echo "$report" | jq -r '.lspFixer.fixesApplied // 0')
+          passed=$(echo "$report" | jq -r '.passed // false')
+        fi
+        {
+          echo "errors-before=$before"
+          echo "errors-after=$after"
+          echo "fixes-applied=$fixes"
+          echo "passed=$passed"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          echo "### tsfix"
+          echo ""
+          echo "| metric | value |"
+          echo "|---|---|"
+          echo "| errors before | ${before:-?} |"
+          echo "| errors after | ${after:-?} |"
+          echo "| deterministic fixes | ${fixes} |"
+          echo "| result | $([ "$passed" = "true" ] && echo '✅ clean' || echo '❌ errors remain') |"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$TSFIX_FAIL_ON_ERROR" = "true" ]; then
+          exit "$code"
+        fi
+        exit 0

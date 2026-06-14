@@ -46,6 +46,17 @@ npx @shipispec/tsfix --workspace . --llm
 tsfix --workspace ./generated --llm --llm-budget-usd 0.50 --json
 ```
 
+Or drop in the **GitHub Action** to gate PRs (after your install step):
+
+```yaml
+- run: npm ci
+- uses: shipispec/tsfix@main
+  with: { workspace: ., llm: true, llm-budget-usd: '0.50' }
+  env: { ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }} }
+```
+
+Full inputs/outputs: [docs/github-action.md](docs/github-action.md).
+
 **Migration engineer doing a framework upgrade.** You're moving to Next.js 15 / React 19 / ESLint 9 / Drizzle and don't want the LLM tax for the trivial fixes. Layer 0/1 alone catches did-you-mean errors with no network, no LLM cost, no config; you pay only for the cases the codemod can't determine deterministically (and even then, the library-migration registry already knows about Next.js 15's async `params`, vite-plugin-svgr's `?react` suffix, etc.).
 
 ```bash

@@ -4,6 +4,9 @@ All notable changes to `@shipispec/tsfix` are documented here. Format follows [K
 
 ## [Unreleased]
 
+### Added
+- **GitHub Action** (`action.yml`, composite). Run tsfix as a CI gate: `uses: shipispec/tsfix@<ref>` after your install step. Inputs for `workspace` / `files` / `llm` (+ provider/model/budget) / `version` / `fail-on-error`; outputs `errors-before`/`errors-after`/`fixes-applied`/`passed`; writes a job summary. Wraps the published CLI via `npx`; not part of the npm tarball. Docs: `docs/github-action.md`.
+
 ## [0.7.1] - 2026-06-13
 
 **UX patch.** No API or behavior change to the fix logic — improves the CLI's first-run experience so a no-key run doesn't read as a dead end.
