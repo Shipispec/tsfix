@@ -17,3 +17,5 @@ scripts/ralph/runs/
 
 # Local-only scratch notes (e.g. RELEASE-TODO.local.md) — never committed
 *.local.md
+# Internal launch/growth plan — local only, never publish to the public repo
+updatedlaunch.md
